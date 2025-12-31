@@ -13,8 +13,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <body>
+        <script
+          // Set theme before React hydration to avoid flashing.
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+  try {
+    const t = localStorage.getItem('theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    else document.documentElement.dataset.theme = 'dark';
+  } catch { /* ignore */ }
+})();`,
+          }}
+        />
         <Auth0Provider>
           {children}
         </Auth0Provider>
