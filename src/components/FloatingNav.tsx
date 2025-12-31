@@ -91,7 +91,18 @@ export default function FloatingNav() {
   }
 
   return (
-    (
+    <>
+      {collapsed && (
+        <button
+          type="button"
+          className="sidebar-mobile-open"
+          onClick={() => setCollapsed(false)}
+          aria-label="Open sidebar"
+        >
+          Menu
+        </button>
+      )}
+
       <aside
         className={collapsed ? "sidebar sidebar-collapsed" : "sidebar"}
         aria-label="Dashboard sidebar"
@@ -201,6 +212,6 @@ export default function FloatingNav() {
           />
         )}
       </aside>
-    )
+    </>
   );
 }
