@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const fullNavItems = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/transactions", label: "Transactions" },
+  { href: "/dashboard/budgeting", label: "Budgeting" },
 ];
 
 const STORAGE_WIDTH_KEY = "sidebarWidth";
