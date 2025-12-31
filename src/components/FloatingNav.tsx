@@ -6,7 +6,6 @@ import { useUser } from "@auth0/nextjs-auth0/client";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const setupNavItems = [{ href: "/dashboard/setup", label: "Setup" }];
 const fullNavItems = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/transactions", label: "Transactions" },
@@ -24,11 +23,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-export default function FloatingNav({ setupDone }: { setupDone: boolean }) {
+export default function FloatingNav() {
   const pathname = usePathname();
   const { user } = useUser();
 
-  const navItems = setupDone ? fullNavItems : setupNavItems;
+  const navItems = fullNavItems;
 
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [collapsed, setCollapsed] = useState(false);

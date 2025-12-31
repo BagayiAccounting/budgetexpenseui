@@ -2,7 +2,6 @@ import { auth0 } from "@/lib/auth0";
 import { ensureUserExists } from "@/lib/userService";
 import FloatingNav from "@/components/FloatingNav";
 import { redirect } from "next/navigation";
-import { hasAnyCategories } from "@/lib/budgetService";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +17,6 @@ export default async function DashboardLayout({
   }
 
   // Server-side: ensure the user exists in your backend.
-  let setupDone = false;
   try {
     const audience = process.env.AUTH0_AUDIENCE || process.env.NEXT_PUBLIC_AUTH0_AUDIENCE;
     const scope = process.env.AUTH0_SCOPE;
@@ -30,18 +28,13 @@ export default async function DashboardLayout({
 
     const { token } = await auth0.getAccessToken(accessTokenOptions);
     await ensureUserExists({ accessToken: token, user: session.user });
-
-    const setupRes = await hasAnyCategories({ accessToken: token, user: session.user });
-    if (setupRes.status === "ok") {
-      setupDone = setupRes.hasAny;
-    }
   } catch {
     // Don't block rendering if the sync fails.
   }
 
   return (
     <div className="dashboard-shell">
-      <FloatingNav setupDone={setupDone} />
+      <FloatingNav />
       <main className="dashboard-main">{children}</main>
     </div>
   );
