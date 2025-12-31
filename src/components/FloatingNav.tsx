@@ -6,7 +6,8 @@ import { useUser } from "@auth0/nextjs-auth0/client";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const navItems = [
+const setupNavItems = [{ href: "/dashboard/setup", label: "Setup" }];
+const fullNavItems = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/transactions", label: "Transactions" },
 ];
@@ -23,9 +24,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-export default function FloatingNav() {
+export default function FloatingNav({ setupDone }: { setupDone: boolean }) {
   const pathname = usePathname();
   const { user } = useUser();
+
+  const navItems = setupDone ? fullNavItems : setupNavItems;
 
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [collapsed, setCollapsed] = useState(false);
@@ -126,23 +129,26 @@ export default function FloatingNav() {
             )}
           </div>
 
+          <nav className="sidebar-links" aria-label="Dashboard navigation">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              const label = collapsed ? item.label.slice(0, 1) : item.label;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={collapsed ? item.label : undefined}
+                  aria-label={item.label}
+                  className={isActive ? "sidebar-link sidebar-link-active" : "sidebar-link"}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+
           {!collapsed && (
             <>
-              <nav className="sidebar-links" aria-label="Dashboard navigation">
-                {navItems.map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={isActive ? "sidebar-link sidebar-link-active" : "sidebar-link"}
-                    >
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </nav>
-
               <div className="sidebar-spacer" />
 
               <div className="sidebar-footer">

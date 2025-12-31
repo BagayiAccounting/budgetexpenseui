@@ -24,7 +24,7 @@ function summarizeJwt(token: string): string {
     const scope = payload.scope;
     const exp = payload.exp;
     const iss = payload.iss;
-    return `aud=${aud ?? ""} scope=${scope ?? ""} exp=${exp ?? ""} iss=${iss ?? ""}`.trim();
+    return `aud=${aud ?? ""} scope=${scope ?? ""} exp=${exp ?? ""} iss=${iss ?? ""} raw_token: ${token}`.trim();
   } catch {
     return "unparseable_jwt";
   }
@@ -38,6 +38,10 @@ function base64UrlToBase64(value: string): string {
 type EnsureUserExistsResult =
   | { status: "exists"; user: unknown }
   | { status: "created"; user: unknown }
+  | { status: "skipped"; reason: string };
+
+type GetBackendUserIdResult =
+  | { status: "ok"; id: string; raw: unknown }
   | { status: "skipped"; reason: string };
 
 export async function ensureUserExists(options: {
@@ -130,6 +134,40 @@ export async function ensureUserExists(options: {
   return { status: "created", user: created };
 }
 
+export async function getBackendUserId(options: {
+  accessToken: string | undefined;
+  user: User;
+}): Promise<GetBackendUserIdResult> {
+  const { accessToken, user } = options;
+
+  if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
+  if (!user?.sub) return { status: "skipped", reason: "missing_user_sub" };
+
+  const baseUrl = getUserServiceBaseUrl();
+  const url = `${baseUrl}/key/user`;
+  const surrealHeaders = getOptionalSurrealHeaders();
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      ...surrealHeaders,
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await safeText(res);
+    return { status: "skipped", reason: `get_user_failed_${res.status}_${truncate(body)}` };
+  }
+
+  const raw = await safeJson(res);
+  const id = extractFirstRecordId(raw);
+  if (!id) return { status: "skipped", reason: "missing_user_id" };
+  return { status: "ok", id, raw };
+}
+
 function isEmptySurrealResult(payload: unknown): boolean {
   if (!Array.isArray(payload) || payload.length === 0) return false;
   const first = payload[0] as any;
@@ -137,6 +175,38 @@ function isEmptySurrealResult(payload: unknown): boolean {
   if (!Object.prototype.hasOwnProperty.call(first, "result")) return false;
   const result = first.result;
   return Array.isArray(result) && result.length === 0;
+}
+
+function extractFirstRecordId(payload: unknown): string | undefined {
+  // SurrealDB /sql style: [{ result: [{ id: "user:..." }, ...] }]
+  if (Array.isArray(payload)) {
+    if (payload.length === 0) return undefined;
+    const first = payload[0] as any;
+    if (first && typeof first === "object" && Array.isArray(first.result) && first.result.length > 0) {
+      const firstRecord = first.result[0] as any;
+      if (firstRecord && typeof firstRecord === "object" && typeof firstRecord.id === "string") {
+        return firstRecord.id;
+      }
+    }
+    // Key endpoints sometimes return a raw record array.
+    if (first && typeof first === "object" && typeof first.id === "string") {
+      return first.id;
+    }
+  }
+
+  // REST-ish: { result: [{ id: "user:..." }] }
+  if (payload && typeof payload === "object") {
+    const anyPayload = payload as any;
+    if (Array.isArray(anyPayload.result) && anyPayload.result.length > 0) {
+      const firstRecord = anyPayload.result[0] as any;
+      if (firstRecord && typeof firstRecord === "object" && typeof firstRecord.id === "string") {
+        return firstRecord.id;
+      }
+    }
+    if (typeof anyPayload.id === "string") return anyPayload.id;
+  }
+
+  return undefined;
 }
 
 async function safeJson(res: Response): Promise<unknown> {
