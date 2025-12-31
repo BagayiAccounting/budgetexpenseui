@@ -1,4 +1,5 @@
 import type { User } from "@auth0/nextjs-auth0/types";
+import { fetchLogged } from "@/lib/http";
 
 const DEFAULT_BASE_URL = "http://localhost:8001";
 
@@ -24,7 +25,7 @@ function summarizeJwt(token: string): string {
     const scope = payload.scope;
     const exp = payload.exp;
     const iss = payload.iss;
-    return `aud=${aud ?? ""} scope=${scope ?? ""} exp=${exp ?? ""} iss=${iss ?? ""} raw_token: ${token}`.trim();
+    return `aud=${aud ?? ""} scope=${scope ?? ""} exp=${exp ?? ""} iss=${iss ?? ""}`.trim();
   } catch {
     return "unparseable_jwt";
   }
@@ -70,7 +71,9 @@ export async function ensureUserExists(options: {
     }
   }
 
-  const getRes = await fetch(url, {
+  const getRes = await fetchLogged(
+    url,
+    {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -78,7 +81,10 @@ export async function ensureUserExists(options: {
       ...surrealHeaders,
     },
     cache: "no-store",
-  });
+    },
+    { name: "userService.GET /key/user" },
+  );
+
 
   if (process.env.NODE_ENV !== "production") {
     console.log("[userService] GET /key/user status:", getRes.status);
@@ -109,7 +115,9 @@ export async function ensureUserExists(options: {
     auth_sub: user.sub,
   };
 
-  const createRes = await fetch(url, {
+  const createRes = await fetchLogged(
+    url,
+    {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -119,7 +127,9 @@ export async function ensureUserExists(options: {
     },
     body: JSON.stringify(createPayload),
     cache: "no-store",
-  });
+    },
+    { name: "userService.POST /key/user" },
+  );
 
   if (process.env.NODE_ENV !== "production") {
     console.log("[userService] POST /key/user status:", createRes.status);
@@ -147,7 +157,9 @@ export async function getBackendUserId(options: {
   const url = `${baseUrl}/key/user`;
   const surrealHeaders = getOptionalSurrealHeaders();
 
-  const res = await fetch(url, {
+  const res = await fetchLogged(
+    url,
+    {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -155,7 +167,9 @@ export async function getBackendUserId(options: {
       ...surrealHeaders,
     },
     cache: "no-store",
-  });
+    },
+    { name: "userService.GET /key/user (id)" },
+  );
 
   if (!res.ok) {
     const body = await safeText(res);

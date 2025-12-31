@@ -1,5 +1,6 @@
 import type { User } from "@auth0/nextjs-auth0/types";
 import { ensureUserExists, getBackendUserId } from "@/lib/userService";
+import { fetchLogged } from "@/lib/http";
 
 const DEFAULT_BASE_URL = "http://localhost:8001";
 
@@ -38,7 +39,9 @@ export async function listCategories(options: {
   const url = `${baseUrl}${path}`;
   const surrealHeaders = getOptionalSurrealHeaders();
 
-  const res = await fetch(url, {
+  const res = await fetchLogged(
+    url,
+    {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -46,7 +49,9 @@ export async function listCategories(options: {
       ...surrealHeaders,
     },
     cache: "no-store",
-  });
+    },
+    { name: "budgetService.GET /key/category" },
+  );
 
   if (!res.ok) {
     const body = await safeText(res);
@@ -121,7 +126,9 @@ export async function createCategories(options: {
     for (const name of normalized) {
       const statement = buildCreateCategorySql({ name, userTable: table, userId: id });
 
-      const res = await fetch(createUrl, {
+      const res = await fetchLogged(
+        createUrl,
+        {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -131,7 +138,9 @@ export async function createCategories(options: {
         },
         body: statement,
         cache: "no-store",
-      });
+        },
+        { name: "budgetService.POST /sql (create category)" },
+      );
 
       if (!res.ok) {
         const body = await safeText(res);
@@ -147,7 +156,9 @@ export async function createCategories(options: {
   // Fallback: REST-ish JSON create (previous behavior)
   const created: string[] = [];
   for (const name of normalized) {
-    const res = await fetch(createUrl, {
+    const res = await fetchLogged(
+      createUrl,
+      {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -160,7 +171,9 @@ export async function createCategories(options: {
         auth_sub: user.sub,
       }),
       cache: "no-store",
-    });
+      },
+      { name: "budgetService.POST /key/category" },
+    );
 
     if (!res.ok) {
       const body = await safeText(res);
