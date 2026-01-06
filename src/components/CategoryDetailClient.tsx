@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TbAccount } from "@/lib/budgetingService";
 
@@ -46,7 +46,7 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
   return rows;
 }
 
-export default function BudgetingClient({ categories }: { categories: Category[] }) {
+export default function CategoryDetailClient({ category }: { category: Category }) {
   const router = useRouter();
   const [draftByCategory, setDraftByCategory] = useState<Record<string, string>>({});
   const [typeByCategory, setTypeByCategory] = useState<Record<string, AccountType>>({});
@@ -54,8 +54,6 @@ export default function BudgetingClient({ categories }: { categories: Category[]
   const [busyCategory, setBusyCategory] = useState<string | null>(null);
   const [busySubCategory, setBusySubCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const hasAny = useMemo(() => categories.length > 0, [categories.length]);
 
   async function addAccount(categoryId: string) {
     setError(null);
@@ -115,7 +113,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     }
   }
 
-  function renderAccounts(accounts: Category["accounts"]) {
+  function renderAccounts(accounts: Category["accounts"], categoryId: string) {
     if (accounts.length === 0) {
       return (
         <div className="txn-row">
@@ -191,26 +189,20 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     );
   }
 
-  function renderCategoryBlock(cat: Category, depth: number) {
-    const isSub = depth > 0;
-    const containerStyle = isSub ? ({ marginTop: 12, marginLeft: 12 } as const) : ({ marginTop: 0 } as const);
-
+  function renderSubcategory(subcat: Category) {
     return (
-      <div key={cat.id} style={containerStyle}>
-        {isSub ? (
-          <div className="txn-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/budgeting/${cat.id}`)}>
-            <div className="txn-left">
-              <div className="txn-name">{cat.name}</div>
-              <div className="txn-meta">Accounts: {cat.accounts.length}</div>
+      <div key={subcat.id} className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+            <div>
+              <div className="panel-title">{subcat.name}</div>
+              <div className="panel-subtitle">Accounts: {subcat.accounts.length}</div>
             </div>
             <button
               type="button"
               className="button button-ghost"
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/dashboard/budgeting/${cat.id}`);
-              }}
-              aria-label={`Expand ${cat.name} category`}
+              onClick={() => router.push(`/dashboard/budgeting/${subcat.id}`)}
+              aria-label={`Expand ${subcat.name} category`}
               style={{ padding: "8px 12px" }}
             >
               <svg
@@ -227,71 +219,16 @@ export default function BudgetingClient({ categories }: { categories: Category[]
               </svg>
             </button>
           </div>
-        ) : (
-          <div className="panel-header">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-              <div>
-                <div className="panel-title">{cat.name}</div>
-                <div className="panel-subtitle">Accounts: {cat.accounts.length}</div>
-              </div>
-              <button
-                type="button"
-                className="button button-ghost"
-                onClick={() => router.push(`/dashboard/budgeting/${cat.id}`)}
-                aria-label={`Expand ${cat.name} category`}
-                style={{ padding: "8px 12px" }}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
 
-        <div className="txn-list">{renderAccounts(cat.accounts)}</div>
+        <div className="txn-list">{renderAccounts(subcat.accounts, subcat.id)}</div>
 
-        {!isSub && (
-          <div className="setup-add" style={{ marginTop: 12 }}>
-            <input
-              className="setup-input"
-              value={subDraftByCategory[cat.id] || ""}
-              onChange={(e) => setSubDraftByCategory((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-              placeholder="New sub-category name"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void addSubCategory(cat.id);
-                }
-              }}
-              disabled={busySubCategory === cat.id}
-            />
-            <button
-              type="button"
-              className="button button-ghost"
-              onClick={() => addSubCategory(cat.id)}
-              disabled={busySubCategory === cat.id || !(subDraftByCategory[cat.id] || "").trim()}
-            >
-              {busySubCategory === cat.id ? "Adding…" : "Add sub-category"}
-            </button>
-          </div>
-        )}
+        {renderAddAccountControls(subcat.id)}
 
-        {renderAddAccountControls(cat.id)}
-
-        {cat.subcategories.length > 0 && (
+        {subcat.subcategories.length > 0 && (
           <div style={{ marginTop: 12 }}>
-            <div className="txn-meta">Sub-categories</div>
-            {cat.subcategories.map((sub) => renderCategoryBlock(sub, depth + 1))}
+            <div className="txn-meta">Nested Sub-categories</div>
+            {subcat.subcategories.map((nestedSub) => renderSubcategory(nestedSub))}
           </div>
         )}
       </div>
@@ -302,8 +239,19 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     <div className="dashboard-page">
       <header className="dashboard-header">
         <div>
-          <h1 className="dashboard-title">Budgeting</h1>
-          <p className="dashboard-subtitle">Categories and their accounts.</p>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={() => router.push("/dashboard/budgeting")}
+            style={{ marginBottom: 8, padding: "4px 8px" }}
+          >
+            ← Back to All Categories
+          </button>
+          <h1 className="dashboard-title">{category.name}</h1>
+          <p className="dashboard-subtitle">
+            Category details with {category.accounts.length} account{category.accounts.length !== 1 ? "s" : ""} and{" "}
+            {category.subcategories.length} sub-categor{category.subcategories.length !== 1 ? "ies" : "y"}
+          </p>
         </div>
       </header>
 
@@ -314,22 +262,49 @@ export default function BudgetingClient({ categories }: { categories: Category[]
         </div>
       )}
 
-      {!hasAny ? (
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <div className="panel-title">No categories yet</div>
-              <div className="panel-subtitle">Waiting for SurrealDB events to populate data.</div>
-            </div>
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <div className="panel-title">Accounts</div>
+            <div className="panel-subtitle">Direct accounts in this category</div>
           </div>
         </div>
-      ) : (
-        <div className="dashboard-grid">
-          {categories.map((cat) => (
-            <div key={cat.id} className="panel">
-              {renderCategoryBlock(cat, 0)}
-            </div>
-          ))}
+
+        <div className="txn-list">{renderAccounts(category.accounts, category.id)}</div>
+
+        <div className="setup-add" style={{ marginTop: 12 }}>
+          <input
+            className="setup-input"
+            value={subDraftByCategory[category.id] || ""}
+            onChange={(e) => setSubDraftByCategory((prev) => ({ ...prev, [category.id]: e.target.value }))}
+            placeholder="New sub-category name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void addSubCategory(category.id);
+              }
+            }}
+            disabled={busySubCategory === category.id}
+          />
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={() => addSubCategory(category.id)}
+            disabled={busySubCategory === category.id || !(subDraftByCategory[category.id] || "").trim()}
+          >
+            {busySubCategory === category.id ? "Adding…" : "Add sub-category"}
+          </button>
+        </div>
+
+        {renderAddAccountControls(category.id)}
+      </div>
+
+      {category.subcategories.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2 className="panel-title" style={{ marginBottom: 12 }}>
+            Sub-categories
+          </h2>
+          {category.subcategories.map((subcat) => renderSubcategory(subcat))}
         </div>
       )}
     </div>
