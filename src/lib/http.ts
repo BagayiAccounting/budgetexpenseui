@@ -20,13 +20,18 @@ function shouldRedact(key: string, rules: RedactRule[]): boolean {
   return rules.some((r) => (typeof r === "string" ? r.toLowerCase() === key.toLowerCase() : r.test(key)));
 }
 
-function shouldShowAuthTokenSnippet(): boolean {
+type AuthTokenLogMode = "off" | "snippet" | "full";
+
+function getAuthTokenLogMode(): AuthTokenLogMode {
   // Opt-in only, and never in production.
-  if (process.env.NODE_ENV === "production") return false;
+  if (process.env.NODE_ENV === "production") return "off";
+
   const env = (process.env.HTTP_LOG_AUTH_TOKEN || "").trim().toLowerCase();
-  if (!env) return false;
-  if (env === "0" || env === "false" || env === "no" || env === "off") return false;
-  return env === "1" || env === "true" || env === "yes" || env === "on" || env === "snippet";
+  if (!env) return "off";
+  if (env === "0" || env === "false" || env === "no" || env === "off") return "off";
+  if (env === "full") return "full";
+  if (env === "1" || env === "true" || env === "yes" || env === "on" || env === "snippet") return "snippet";
+  return "off";
 }
 
 function redactAuthorizationValue(value: string): string {
@@ -37,6 +42,16 @@ function redactAuthorizationValue(value: string): string {
   const prefix = token.slice(0, 8);
   const suffix = token.slice(-6);
   return `Bearer ${prefix}…${suffix}`;
+}
+
+function logAuthorizationFull(value: string) {
+  // Log in chunks to avoid devtools shortening long strings.
+  const v = value.trim();
+  const chunkSize = 120;
+  for (let i = 0; i < v.length; i += chunkSize) {
+    const chunk = v.slice(i, i + chunkSize);
+    console.log(`[http] authorization(full) ${String(i / chunkSize).padStart(2, "0")}:`, chunk);
+  }
 }
 
 function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
@@ -58,14 +73,14 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
 
 function redactHeaders(headers: Record<string, string>, rules: RedactRule[]): Record<string, string> {
   const out: Record<string, string> = {};
-  const showAuthSnippet = shouldShowAuthTokenSnippet();
+  const authMode = getAuthTokenLogMode();
   for (const [k, v] of Object.entries(headers)) {
     if (shouldRedact(k, rules)) {
-      if (showAuthSnippet && k.toLowerCase() === "authorization") {
-        out[k] = v;
-      } else {
-        out[k] = "[REDACTED]";
-      }
+      if (k.toLowerCase() === "authorization") {
+        if (authMode === "full") out[k] = v;
+        else if (authMode === "snippet") out[k] = redactAuthorizationValue(v);
+        else out[k] = "[REDACTED]";
+      } else out[k] = "[REDACTED]";
     } else {
       out[k] = v;
     }
@@ -94,21 +109,40 @@ export async function fetchLogged(input: RequestInfo | URL, init?: RequestInit, 
   const start = Date.now();
 
   const requestHeaders = normalizeHeaders(init?.headers);
-  const redactedReqHeaders = redactHeaders(requestHeaders, opts?.redactRequestHeaders ?? [
+  const redactRequestHeaders = opts?.redactRequestHeaders ?? [
     "authorization",
     /cookie/i,
     /set-cookie/i,
     /x-api-key/i,
-  ]);
+  ];
+
+  const redactedReqHeaders = redactHeaders(requestHeaders, redactRequestHeaders);
 
   const method = init?.method || "GET";
-  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as any)?.url || String(input);
-  const requestBody = describeBody((init as any)?.body, maxBodyChars);
+  const url =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input instanceof Request
+          ? input.url
+          : String(input);
+  const requestBody = describeBody(init?.body ?? null, maxBodyChars);
 
   if (enabled) {
     console.log(`[http] -> ${name ? name + " " : ""}${method} ${url}`);
     if (Object.keys(redactedReqHeaders).length) console.log("[http] request headers:", redactedReqHeaders);
     if (requestBody != null) console.log("[http] request body:", requestBody);
+
+    // In `full` mode, also print Authorization in chunks.
+    const authMode = getAuthTokenLogMode();
+    if (authMode === "full") {
+      const authHeaderKey = Object.keys(requestHeaders).find((k) => k.toLowerCase() === "authorization");
+      const authValue = authHeaderKey ? requestHeaders[authHeaderKey] : undefined;
+      if (typeof authValue === "string" && authValue.trim()) {
+        logAuthorizationFull(authValue);
+      }
+    }
   }
 
   let res: Response;

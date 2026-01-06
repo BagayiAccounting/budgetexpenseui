@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TbAccount } from "@/lib/budgetingService";
 
+const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
+type AccountType = (typeof ACCOUNT_TYPES)[number];
+
 type Category = {
   id: string;
   name: string;
@@ -45,7 +48,10 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
 export default function BudgetingClient({ categories }: { categories: Category[] }) {
   const router = useRouter();
   const [draftByCategory, setDraftByCategory] = useState<Record<string, string>>({});
+  const [typeByCategory, setTypeByCategory] = useState<Record<string, AccountType>>({});
+  const [subDraftByCategory, setSubDraftByCategory] = useState<Record<string, string>>({});
   const [busyCategory, setBusyCategory] = useState<string | null>(null);
+  const [busySubCategory, setBusySubCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const hasAny = useMemo(() => categories.length > 0, [categories.length]);
@@ -55,12 +61,14 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     const name = (draftByCategory[categoryId] || "").trim();
     if (!name) return;
 
+    const type = typeByCategory[categoryId] || "asset";
+
     setBusyCategory(categoryId);
     try {
       const res = await fetch("/api/budgeting/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoryId, name }),
+        body: JSON.stringify({ categoryId, name, type }),
       });
 
       const data = await res.json().catch(() => null);
@@ -75,6 +83,34 @@ export default function BudgetingClient({ categories }: { categories: Category[]
       setError("Failed to create account");
     } finally {
       setBusyCategory(null);
+    }
+  }
+
+  async function addSubCategory(parentCategoryId: string) {
+    setError(null);
+    const name = (subDraftByCategory[parentCategoryId] || "").trim();
+    if (!name) return;
+
+    setBusySubCategory(parentCategoryId);
+    try {
+      const res = await fetch("/api/budgeting/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentCategoryId, name }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && (data.reason || data.error)) || "Failed to create sub-category");
+        return;
+      }
+
+      setSubDraftByCategory((prev) => ({ ...prev, [parentCategoryId]: "" }));
+      router.refresh();
+    } catch {
+      setError("Failed to create sub-category");
+    } finally {
+      setBusySubCategory(null);
     }
   }
 
@@ -148,6 +184,43 @@ export default function BudgetingClient({ categories }: { categories: Category[]
               </div>
 
               <div className="setup-add" style={{ marginTop: 12 }}>
+                <input
+                  className="setup-input"
+                  value={subDraftByCategory[cat.id] || ""}
+                  onChange={(e) => setSubDraftByCategory((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+                  placeholder="New sub-category name"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void addSubCategory(cat.id);
+                    }
+                  }}
+                  disabled={busySubCategory === cat.id}
+                />
+                <button
+                  type="button"
+                  className="button button-ghost"
+                  onClick={() => addSubCategory(cat.id)}
+                  disabled={busySubCategory === cat.id || !(subDraftByCategory[cat.id] || "").trim()}
+                >
+                  {busySubCategory === cat.id ? "Adding…" : "Add sub-category"}
+                </button>
+              </div>
+
+              <div className="setup-add" style={{ marginTop: 12 }}>
+                <select
+                  className="setup-input"
+                  value={typeByCategory[cat.id] || "asset"}
+                  onChange={(e) => setTypeByCategory((prev) => ({ ...prev, [cat.id]: e.target.value as AccountType }))}
+                  disabled={busyCategory === cat.id}
+                  aria-label="Account type"
+                >
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
                 <input
                   className="setup-input"
                   value={draftByCategory[cat.id] || ""}
