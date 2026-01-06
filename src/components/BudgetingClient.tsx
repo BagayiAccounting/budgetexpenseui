@@ -2,12 +2,45 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { TbAccount } from "@/lib/budgetingService";
 
 type Category = {
   id: string;
   name: string;
-  accounts: Array<{ id: string; name: string }>;
+  accounts: Array<{ id: string; name: string; tbAccount?: TbAccount }>;
 };
+
+function signClass(value: number): string | undefined {
+  return value < 0 ? "negative" : value > 0 ? "positive" : undefined;
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function toFiniteNumber(value: string | number | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: string; text: string; className?: string }> {
+  if (!tbAccount) return [];
+  const rows: Array<{ label: string; text: string; className?: string }> = [];
+
+  const book = toFiniteNumber(tbAccount.book_balance);
+  const spendable = toFiniteNumber(tbAccount.spendable_balance);
+  const projected = toFiniteNumber(tbAccount.projected_balance);
+
+  if (book != null) rows.push({ label: "Book", text: formatNumber(book), className: signClass(book) });
+  if (spendable != null) rows.push({ label: "Spendable", text: formatNumber(spendable), className: signClass(spendable) });
+  if (projected != null) rows.push({ label: "Projected", text: formatNumber(projected), className: signClass(projected) });
+
+  return rows;
+}
 
 export default function BudgetingClient({ categories }: { categories: Category[] }) {
   const router = useRouter();
@@ -96,6 +129,19 @@ export default function BudgetingClient({ categories }: { categories: Category[]
                         <div className="txn-name">{a.name}</div>
                         <div className="txn-meta">{a.id}</div>
                       </div>
+                      {(() => {
+                        const rows = rowsFromTbAccount(a.tbAccount);
+                        if (!rows || rows.length === 0) return null;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                            {rows.map((row) => (
+                              <div key={row.label} className={`txn-meta${row.className ? ` ${row.className}` : ""}`}>
+                                {row.label}: {row.text}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))
                 )}

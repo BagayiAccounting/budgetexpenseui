@@ -5,23 +5,42 @@ const DEFAULT_BASE_URL = "http://localhost:8001";
 type SurrealQueryResult = { status?: string; time?: string; result?: unknown };
 
 type CategoryRecord = {
-  id: string;
-  name?: string;
-  [key: string]: unknown;
+  id: unknown;
+  name?: unknown;
 };
 
 type AccountRecord = {
-  id: string;
-  name?: string;
+  id: unknown;
+  name?: unknown;
   category_id?: unknown;
-  [key: string]: unknown;
+  tb_account?: unknown;
+};
+
+export type TbAccount = {
+  book_balance: string;
+  credits_pending: string;
+  credits_posted: string;
+  debits_pending: string;
+  debits_posted: string;
+  flags: string[];
+  id: string;
+  ledger: number;
+  projected_balance: string;
+  spendable_balance: string;
+  user_data_128: string;
 };
 
 export type CategoryWithAccounts = {
   id: string;
   name: string;
-  accounts: Array<{ id: string; name: string }>;
+  accounts: Array<{ id: string; name: string; tbAccount?: TbAccount }>;
 };
+
+function asTbAccount(value: unknown): TbAccount | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  // We expect Surreal to always return this exact shape; keep runtime checks minimal.
+  return value as TbAccount;
+}
 
 function getBaseUrl() {
   return process.env.BUDGET_SERVICE_BASE_URL || process.env.USER_SERVICE_BASE_URL || DEFAULT_BASE_URL;
@@ -41,11 +60,13 @@ function thingIdToString(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   // Some Surreal clients return { tb: "table", id: "..." }
   if (typeof value === "object") {
-    const anyValue = value as any;
-    if (typeof anyValue.tb === "string" && typeof anyValue.id === "string") {
-      return `${anyValue.tb}:${anyValue.id}`;
+    const record = value as Record<string, unknown>;
+    const tb = record["tb"];
+    const id = record["id"];
+    if (typeof tb === "string" && typeof id === "string") {
+      return `${tb}:${id}`;
     }
-    if (typeof anyValue.id === "string") return anyValue.id;
+    if (typeof id === "string") return id;
   }
   return undefined;
 }
@@ -55,9 +76,9 @@ function parseSurrealSqlPayload(payload: unknown): SurrealQueryResult[] | null {
   return payload as SurrealQueryResult[];
 }
 
-function getResultArray<T = any>(statement: SurrealQueryResult | undefined): T[] {
-  const arr = (statement as any)?.result;
-  return Array.isArray(arr) ? (arr as T[]) : [];
+function getResultArray<T = unknown>(statement: SurrealQueryResult | undefined): T[] {
+  const result = statement?.result;
+  return Array.isArray(result) ? (result as T[]) : [];
 }
 
 export async function listCategoriesWithAccounts(options: {
@@ -73,7 +94,7 @@ export async function listCategoriesWithAccounts(options: {
   // Minimal assumptions about schema:
   // - categories stored in table `category`
   // - accounts stored in table `account` with field `category_id` pointing to the category thing
-  const query = "SELECT * FROM category; SELECT * FROM account;";
+  const query = "SELECT * FROM category; SELECT *, fn::tb_account(tb_account_id) AS tb_account FROM account;";
 
   const res = await fetchLogged(
     url,
@@ -105,10 +126,10 @@ export async function listCategoriesWithAccounts(options: {
 
   const categories: CategoryWithAccounts[] = categoriesRaw
     .map((c) => {
-      const id = thingIdToString((c as any).id);
-      const name = typeof (c as any).name === "string" ? (c as any).name : "(Unnamed category)";
+      const id = thingIdToString(c.id);
+      const name = typeof c.name === "string" ? c.name : "(Unnamed category)";
       if (!id) return null;
-      return { id, name, accounts: [] as Array<{ id: string; name: string }> };
+      return { id, name, accounts: [] as Array<{ id: string; name: string; tbAccount?: TbAccount }> };
     })
     .filter(Boolean) as CategoryWithAccounts[];
 
@@ -116,13 +137,13 @@ export async function listCategoriesWithAccounts(options: {
   for (const c of categories) byCategoryId.set(c.id, c);
 
   for (const a of accountsRaw) {
-    const accountId = thingIdToString((a as any).id);
-    const accountName = typeof (a as any).name === "string" ? (a as any).name : "(Unnamed account)";
-    const categoryId = thingIdToString((a as any).category_id);
+    const accountId = thingIdToString(a.id);
+    const accountName = typeof a.name === "string" ? a.name : "(Unnamed account)";
+    const categoryId = thingIdToString(a.category_id);
     if (!accountId || !categoryId) continue;
     const cat = byCategoryId.get(categoryId);
     if (!cat) continue;
-    cat.accounts.push({ id: accountId, name: accountName });
+    cat.accounts.push({ id: accountId, name: accountName, tbAccount: asTbAccount(a.tb_account) });
   }
 
   // Stable sort for nicer UI.
