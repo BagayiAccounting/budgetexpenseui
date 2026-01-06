@@ -133,16 +133,6 @@ export async function fetchLogged(input: RequestInfo | URL, init?: RequestInit, 
     console.log(`[http] -> ${name ? name + " " : ""}${method} ${url}`);
     if (Object.keys(redactedReqHeaders).length) console.log("[http] request headers:", redactedReqHeaders);
     if (requestBody != null) console.log("[http] request body:", requestBody);
-
-    // In `full` mode, also print Authorization in chunks.
-    const authMode = getAuthTokenLogMode();
-    if (authMode === "full") {
-      const authHeaderKey = Object.keys(requestHeaders).find((k) => k.toLowerCase() === "authorization");
-      const authValue = authHeaderKey ? requestHeaders[authHeaderKey] : undefined;
-      if (typeof authValue === "string" && authValue.trim()) {
-        logAuthorizationFull(authValue);
-      }
-    }
   }
 
   let res: Response;
