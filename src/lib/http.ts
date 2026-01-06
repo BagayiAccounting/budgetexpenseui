@@ -20,6 +20,25 @@ function shouldRedact(key: string, rules: RedactRule[]): boolean {
   return rules.some((r) => (typeof r === "string" ? r.toLowerCase() === key.toLowerCase() : r.test(key)));
 }
 
+function shouldShowAuthTokenSnippet(): boolean {
+  // Opt-in only, and never in production.
+  if (process.env.NODE_ENV === "production") return false;
+  const env = (process.env.HTTP_LOG_AUTH_TOKEN || "").trim().toLowerCase();
+  if (!env) return false;
+  if (env === "0" || env === "false" || env === "no" || env === "off") return false;
+  return env === "1" || env === "true" || env === "yes" || env === "on" || env === "snippet";
+}
+
+function redactAuthorizationValue(value: string): string {
+  const v = value.trim();
+  const m = /^Bearer\s+(.+)$/i.exec(v);
+  const token = m?.[1] ?? v;
+  if (token.length <= 16) return "Bearer [REDACTED]";
+  const prefix = token.slice(0, 8);
+  const suffix = token.slice(-6);
+  return `Bearer ${prefix}…${suffix}`;
+}
+
 function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
   if (!headers) return {};
   if (headers instanceof Headers) {
@@ -39,8 +58,17 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
 
 function redactHeaders(headers: Record<string, string>, rules: RedactRule[]): Record<string, string> {
   const out: Record<string, string> = {};
+  const showAuthSnippet = shouldShowAuthTokenSnippet();
   for (const [k, v] of Object.entries(headers)) {
-    out[k] = shouldRedact(k, rules) ? "[REDACTED]" : v;
+    if (shouldRedact(k, rules)) {
+      if (showAuthSnippet && k.toLowerCase() === "authorization") {
+        out[k] = v;
+      } else {
+        out[k] = "[REDACTED]";
+      }
+    } else {
+      out[k] = v;
+    }
   }
   return out;
 }
