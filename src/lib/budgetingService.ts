@@ -7,6 +7,7 @@ type SurrealQueryResult = { status?: string; time?: string; result?: unknown };
 type CategoryRecord = {
   id: unknown;
   name?: unknown;
+  parent_id?: unknown;
 };
 
 type AccountRecord = {
@@ -33,7 +34,9 @@ export type TbAccount = {
 export type CategoryWithAccounts = {
   id: string;
   name: string;
+  parentId?: string;
   accounts: Array<{ id: string; name: string; tbAccount?: TbAccount }>;
+  subcategories: CategoryWithAccounts[];
 };
 
 export type AccountType = "asset" | "expense" | "liability" | "revenue" | "equity";
@@ -127,17 +130,36 @@ export async function listCategoriesWithAccounts(options: {
   const categoriesRaw = getResultArray<CategoryRecord>(statements[0]);
   const accountsRaw = getResultArray<AccountRecord>(statements[1]);
 
-  const categories: CategoryWithAccounts[] = categoriesRaw
+  const allCategories: CategoryWithAccounts[] = categoriesRaw
     .map((c) => {
       const id = thingIdToString(c.id);
       const name = typeof c.name === "string" ? c.name : "(Unnamed category)";
+      const parentId = thingIdToString(c.parent_id);
       if (!id) return null;
-      return { id, name, accounts: [] as Array<{ id: string; name: string; tbAccount?: TbAccount }> };
+      return {
+        id,
+        name,
+        parentId,
+        accounts: [] as Array<{ id: string; name: string; tbAccount?: TbAccount }> ,
+        subcategories: [] as CategoryWithAccounts[],
+      };
     })
     .filter(Boolean) as CategoryWithAccounts[];
 
   const byCategoryId = new Map<string, CategoryWithAccounts>();
-  for (const c of categories) byCategoryId.set(c.id, c);
+  for (const c of allCategories) byCategoryId.set(c.id, c);
+
+  const rootCategories: CategoryWithAccounts[] = [];
+  for (const c of allCategories) {
+    if (c.parentId) {
+      const parent = byCategoryId.get(c.parentId);
+      if (parent) {
+        parent.subcategories.push(c);
+        continue;
+      }
+    }
+    rootCategories.push(c);
+  }
 
   for (const a of accountsRaw) {
     const accountId = thingIdToString(a.id);
@@ -149,11 +171,17 @@ export async function listCategoriesWithAccounts(options: {
     cat.accounts.push({ id: accountId, name: accountName, tbAccount: asTbAccount(a.tb_account) });
   }
 
-  // Stable sort for nicer UI.
-  categories.sort((a, b) => a.name.localeCompare(b.name));
-  for (const c of categories) c.accounts.sort((a, b) => a.name.localeCompare(b.name));
+  function sortCategoryTree(node: CategoryWithAccounts) {
+    node.accounts.sort((a, b) => a.name.localeCompare(b.name));
+    node.subcategories.sort((a, b) => a.name.localeCompare(b.name));
+    for (const child of node.subcategories) sortCategoryTree(child);
+  }
 
-  return { status: "ok", categories };
+  // Stable sort for nicer UI.
+  rootCategories.sort((a, b) => a.name.localeCompare(b.name));
+  for (const c of rootCategories) sortCategoryTree(c);
+
+  return { status: "ok", categories: rootCategories };
 }
 
 export async function createAccount(options: {

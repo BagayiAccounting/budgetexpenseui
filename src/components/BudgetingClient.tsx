@@ -11,6 +11,7 @@ type Category = {
   id: string;
   name: string;
   accounts: Array<{ id: string; name: string; tbAccount?: TbAccount }>;
+  subcategories: Category[];
 };
 
 function signClass(value: number): string | undefined {
@@ -114,6 +115,144 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     }
   }
 
+  function renderAccounts(accounts: Category["accounts"]) {
+    if (accounts.length === 0) {
+      return (
+        <div className="txn-row">
+          <div className="txn-left">
+            <div className="txn-name">No accounts</div>
+            <div className="txn-meta">Add one below</div>
+          </div>
+        </div>
+      );
+    }
+
+    return accounts.map((a) => (
+      <div key={a.id} className="txn-row">
+        <div className="txn-left">
+          <div className="txn-name">{a.name}</div>
+          <div className="txn-meta">{a.id}</div>
+        </div>
+        {(() => {
+          const rows = rowsFromTbAccount(a.tbAccount);
+          if (!rows || rows.length === 0) return null;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+              {rows.map((row) => (
+                <div key={row.label} className={`txn-meta${row.className ? ` ${row.className}` : ""}`}>
+                  {row.label}: {row.text}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+    ));
+  }
+
+  function renderAddAccountControls(categoryId: string) {
+    return (
+      <div className="setup-add" style={{ marginTop: 12 }}>
+        <select
+          className="setup-input"
+          value={typeByCategory[categoryId] || "asset"}
+          onChange={(e) => setTypeByCategory((prev) => ({ ...prev, [categoryId]: e.target.value as AccountType }))}
+          disabled={busyCategory === categoryId}
+          aria-label="Account type"
+        >
+          {ACCOUNT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <input
+          className="setup-input"
+          value={draftByCategory[categoryId] || ""}
+          onChange={(e) => setDraftByCategory((prev) => ({ ...prev, [categoryId]: e.target.value }))}
+          placeholder="New account name"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void addAccount(categoryId);
+            }
+          }}
+          disabled={busyCategory === categoryId}
+        />
+        <button
+          type="button"
+          className="button button-ghost"
+          onClick={() => addAccount(categoryId)}
+          disabled={busyCategory === categoryId || !(draftByCategory[categoryId] || "").trim()}
+        >
+          {busyCategory === categoryId ? "Adding…" : "Add account"}
+        </button>
+      </div>
+    );
+  }
+
+  function renderCategoryBlock(cat: Category, depth: number) {
+    const isSub = depth > 0;
+    const containerStyle = isSub ? ({ marginTop: 12, marginLeft: 12 } as const) : ({ marginTop: 0 } as const);
+
+    return (
+      <div key={cat.id} style={containerStyle}>
+        {isSub ? (
+          <div className="txn-row">
+            <div className="txn-left">
+              <div className="txn-name">{cat.name}</div>
+              <div className="txn-meta">Accounts: {cat.accounts.length}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="panel-header">
+            <div>
+              <div className="panel-title">{cat.name}</div>
+              <div className="panel-subtitle">Accounts: {cat.accounts.length}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="txn-list">{renderAccounts(cat.accounts)}</div>
+
+        {!isSub && (
+          <div className="setup-add" style={{ marginTop: 12 }}>
+            <input
+              className="setup-input"
+              value={subDraftByCategory[cat.id] || ""}
+              onChange={(e) => setSubDraftByCategory((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+              placeholder="New sub-category name"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addSubCategory(cat.id);
+                }
+              }}
+              disabled={busySubCategory === cat.id}
+            />
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => addSubCategory(cat.id)}
+              disabled={busySubCategory === cat.id || !(subDraftByCategory[cat.id] || "").trim()}
+            >
+              {busySubCategory === cat.id ? "Adding…" : "Add sub-category"}
+            </button>
+          </div>
+        )}
+
+        {renderAddAccountControls(cat.id)}
+
+        {cat.subcategories.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div className="txn-meta">Sub-categories</div>
+            {cat.subcategories.map((sub) => renderCategoryBlock(sub, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-page">
       <header className="dashboard-header">
@@ -143,106 +282,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
         <div className="dashboard-grid">
           {categories.map((cat) => (
             <div key={cat.id} className="panel">
-              <div className="panel-header">
-                <div>
-                  <div className="panel-title">{cat.name}</div>
-                  <div className="panel-subtitle">Accounts: {cat.accounts.length}</div>
-                </div>
-              </div>
-
-              <div className="txn-list">
-                {cat.accounts.length === 0 ? (
-                  <div className="txn-row">
-                    <div className="txn-left">
-                      <div className="txn-name">No accounts</div>
-                      <div className="txn-meta">Add one below</div>
-                    </div>
-                  </div>
-                ) : (
-                  cat.accounts.map((a) => (
-                    <div key={a.id} className="txn-row">
-                      <div className="txn-left">
-                        <div className="txn-name">{a.name}</div>
-                        <div className="txn-meta">{a.id}</div>
-                      </div>
-                      {(() => {
-                        const rows = rowsFromTbAccount(a.tbAccount);
-                        if (!rows || rows.length === 0) return null;
-                        return (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                            {rows.map((row) => (
-                              <div key={row.label} className={`txn-meta${row.className ? ` ${row.className}` : ""}`}>
-                                {row.label}: {row.text}
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="setup-add" style={{ marginTop: 12 }}>
-                <input
-                  className="setup-input"
-                  value={subDraftByCategory[cat.id] || ""}
-                  onChange={(e) => setSubDraftByCategory((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-                  placeholder="New sub-category name"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void addSubCategory(cat.id);
-                    }
-                  }}
-                  disabled={busySubCategory === cat.id}
-                />
-                <button
-                  type="button"
-                  className="button button-ghost"
-                  onClick={() => addSubCategory(cat.id)}
-                  disabled={busySubCategory === cat.id || !(subDraftByCategory[cat.id] || "").trim()}
-                >
-                  {busySubCategory === cat.id ? "Adding…" : "Add sub-category"}
-                </button>
-              </div>
-
-              <div className="setup-add" style={{ marginTop: 12 }}>
-                <select
-                  className="setup-input"
-                  value={typeByCategory[cat.id] || "asset"}
-                  onChange={(e) => setTypeByCategory((prev) => ({ ...prev, [cat.id]: e.target.value as AccountType }))}
-                  disabled={busyCategory === cat.id}
-                  aria-label="Account type"
-                >
-                  {ACCOUNT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="setup-input"
-                  value={draftByCategory[cat.id] || ""}
-                  onChange={(e) => setDraftByCategory((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-                  placeholder="New account name"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void addAccount(cat.id);
-                    }
-                  }}
-                  disabled={busyCategory === cat.id}
-                />
-                <button
-                  type="button"
-                  className="button button-ghost"
-                  onClick={() => addAccount(cat.id)}
-                  disabled={busyCategory === cat.id || !(draftByCategory[cat.id] || "").trim()}
-                >
-                  {busyCategory === cat.id ? "Adding…" : "Add account"}
-                </button>
-              </div>
+              {renderCategoryBlock(cat, 0)}
             </div>
           ))}
         </div>
