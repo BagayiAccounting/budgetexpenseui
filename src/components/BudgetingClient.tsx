@@ -46,30 +46,51 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
   return rows;
 }
 
+type ModalType = "account" | "subcategory" | null;
+
 export default function BudgetingClient({ categories }: { categories: Category[] }) {
   const router = useRouter();
-  const [draftByCategory, setDraftByCategory] = useState<Record<string, string>>({});
-  const [typeByCategory, setTypeByCategory] = useState<Record<string, AccountType>>({});
-  const [subDraftByCategory, setSubDraftByCategory] = useState<Record<string, string>>({});
-  const [busyCategory, setBusyCategory] = useState<string | null>(null);
-  const [busySubCategory, setBusySubCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modalType, setModalType] = useState<ModalType>(null);
+  const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
+  const [showDropdown, setShowDropdown] = useState<string | null>(null);
+  
+  // Form states
+  const [accountName, setAccountName] = useState("");
+  const [accountType, setAccountType] = useState<AccountType>("asset");
+  const [subcategoryName, setSubcategoryName] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
 
   const hasAny = useMemo(() => categories.length > 0, [categories.length]);
 
-  async function addAccount(categoryId: string) {
+  function openModal(type: ModalType, categoryId: string) {
+    setModalType(type);
+    setModalCategoryId(categoryId);
+    setAccountName("");
+    setAccountType("asset");
+    setSubcategoryName("");
     setError(null);
-    const name = (draftByCategory[categoryId] || "").trim();
-    if (!name) return;
+    setShowDropdown(null);
+  }
 
-    const type = typeByCategory[categoryId] || "asset";
+  function closeModal() {
+    setModalType(null);
+    setModalCategoryId(null);
+    setAccountName("");
+    setSubcategoryName("");
+  }
 
-    setBusyCategory(categoryId);
+  async function handleAddAccount() {
+    if (!modalCategoryId || !accountName.trim()) return;
+    
+    setError(null);
+    setIsBusy(true);
+
     try {
       const res = await fetch("/api/budgeting/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoryId, name, type }),
+        body: JSON.stringify({ categoryId: modalCategoryId, name: accountName.trim(), type: accountType }),
       });
 
       const data = await res.json().catch(() => null);
@@ -78,26 +99,26 @@ export default function BudgetingClient({ categories }: { categories: Category[]
         return;
       }
 
-      setDraftByCategory((prev) => ({ ...prev, [categoryId]: "" }));
+      closeModal();
       router.refresh();
     } catch {
       setError("Failed to create account");
     } finally {
-      setBusyCategory(null);
+      setIsBusy(false);
     }
   }
 
-  async function addSubCategory(parentCategoryId: string) {
+  async function handleAddSubCategory() {
+    if (!modalCategoryId || !subcategoryName.trim()) return;
+    
     setError(null);
-    const name = (subDraftByCategory[parentCategoryId] || "").trim();
-    if (!name) return;
+    setIsBusy(true);
 
-    setBusySubCategory(parentCategoryId);
     try {
       const res = await fetch("/api/budgeting/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ parentCategoryId, name }),
+        body: JSON.stringify({ parentCategoryId: modalCategoryId, name: subcategoryName.trim() }),
       });
 
       const data = await res.json().catch(() => null);
@@ -106,12 +127,12 @@ export default function BudgetingClient({ categories }: { categories: Category[]
         return;
       }
 
-      setSubDraftByCategory((prev) => ({ ...prev, [parentCategoryId]: "" }));
+      closeModal();
       router.refresh();
     } catch {
       setError("Failed to create sub-category");
     } finally {
-      setBusySubCategory(null);
+      setIsBusy(false);
     }
   }
 
@@ -121,7 +142,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
         <div className="txn-row">
           <div className="txn-left">
             <div className="txn-name">No accounts</div>
-            <div className="txn-meta">Add one below</div>
+            <div className="txn-meta">Click + to add</div>
           </div>
         </div>
       );
@@ -150,50 +171,10 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     ));
   }
 
-  function renderAddAccountControls(categoryId: string) {
-    return (
-      <div className="setup-add" style={{ marginTop: 12 }}>
-        <select
-          className="setup-input"
-          value={typeByCategory[categoryId] || "asset"}
-          onChange={(e) => setTypeByCategory((prev) => ({ ...prev, [categoryId]: e.target.value as AccountType }))}
-          disabled={busyCategory === categoryId}
-          aria-label="Account type"
-        >
-          {ACCOUNT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <input
-          className="setup-input"
-          value={draftByCategory[categoryId] || ""}
-          onChange={(e) => setDraftByCategory((prev) => ({ ...prev, [categoryId]: e.target.value }))}
-          placeholder="New account name"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void addAccount(categoryId);
-            }
-          }}
-          disabled={busyCategory === categoryId}
-        />
-        <button
-          type="button"
-          className="button button-ghost"
-          onClick={() => addAccount(categoryId)}
-          disabled={busyCategory === categoryId || !(draftByCategory[categoryId] || "").trim()}
-        >
-          {busyCategory === categoryId ? "Adding…" : "Add account"}
-        </button>
-      </div>
-    );
-  }
-
   function renderCategoryBlock(cat: Category, depth: number) {
     const isSub = depth > 0;
     const containerStyle = isSub ? ({ marginTop: 12, marginLeft: 12 } as const) : ({ marginTop: 0 } as const);
+    const isDropdownOpen = showDropdown === cat.id;
 
     return (
       <div key={cat.id} style={containerStyle}>
@@ -234,59 +215,113 @@ export default function BudgetingClient({ categories }: { categories: Category[]
                 <div className="panel-title">{cat.name}</div>
                 <div className="panel-subtitle">Accounts: {cat.accounts.length}</div>
               </div>
-              <button
-                type="button"
-                className="button button-ghost"
-                onClick={() => router.push(`/dashboard/budgeting/${cat.id}`)}
-                aria-label={`Expand ${cat.name} category`}
-                style={{ padding: "8px 12px" }}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+              <div style={{ display: "flex", gap: "8px" }}>
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    onClick={() => setShowDropdown(isDropdownOpen ? null : cat.id)}
+                    aria-label="Add item"
+                    style={{ padding: "8px 12px" }}
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
+                  {isDropdownOpen && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "100%",
+                        right: 0,
+                        marginTop: "4px",
+                        backgroundColor: "var(--bg-primary, #ffffff)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                        zIndex: 10,
+                        minWidth: "160px",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openModal("account", cat.id)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "12px 16px",
+                          textAlign: "left",
+                          border: "none",
+                          background: "none",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          color: "#000000",
+                          fontWeight: 500,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        Add Account
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openModal("subcategory", cat.id)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "12px 16px",
+                          textAlign: "left",
+                          border: "none",
+                          background: "none",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          color: "#000000",
+                          fontWeight: 500,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        Add Sub-category
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="button button-ghost"
+                  onClick={() => router.push(`/dashboard/budgeting/${cat.id}`)}
+                  aria-label={`Expand ${cat.name} category`}
+                  style={{ padding: "8px 12px" }}
                 >
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         <div className="txn-list">{renderAccounts(cat.accounts)}</div>
-
-        {!isSub && (
-          <div className="setup-add" style={{ marginTop: 12 }}>
-            <input
-              className="setup-input"
-              value={subDraftByCategory[cat.id] || ""}
-              onChange={(e) => setSubDraftByCategory((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-              placeholder="New sub-category name"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void addSubCategory(cat.id);
-                }
-              }}
-              disabled={busySubCategory === cat.id}
-            />
-            <button
-              type="button"
-              className="button button-ghost"
-              onClick={() => addSubCategory(cat.id)}
-              disabled={busySubCategory === cat.id || !(subDraftByCategory[cat.id] || "").trim()}
-            >
-              {busySubCategory === cat.id ? "Adding…" : "Add sub-category"}
-            </button>
-          </div>
-        )}
-
-        {renderAddAccountControls(cat.id)}
 
         {cat.subcategories.length > 0 && (
           <div style={{ marginTop: 12 }}>
@@ -330,6 +365,146 @@ export default function BudgetingClient({ categories }: { categories: Category[]
               {renderCategoryBlock(cat, 0)}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal for adding account */}
+      {modalType === "account" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Add Account</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px" }}>Account Type</label>
+                <select
+                  className="setup-input"
+                  value={accountType}
+                  onChange={(e) => setAccountType(e.target.value as AccountType)}
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                >
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px" }}>Account Name</label>
+                <input
+                  className="setup-input"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  placeholder="Enter account name"
+                  disabled={isBusy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddAccount();
+                    }
+                  }}
+                  style={{ width: "100%" }}
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={handleAddAccount}
+                  disabled={isBusy || !accountName.trim()}
+                >
+                  {isBusy ? "Adding…" : "Add Account"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for adding sub-category */}
+      {modalType === "subcategory" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Add Sub-category</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px" }}>Sub-category Name</label>
+                <input
+                  className="setup-input"
+                  value={subcategoryName}
+                  onChange={(e) => setSubcategoryName(e.target.value)}
+                  placeholder="Enter sub-category name"
+                  disabled={isBusy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddSubCategory();
+                    }
+                  }}
+                  style={{ width: "100%" }}
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={handleAddSubCategory}
+                  disabled={isBusy || !subcategoryName.trim()}
+                >
+                  {isBusy ? "Adding…" : "Add Sub-category"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
