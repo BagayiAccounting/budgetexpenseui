@@ -115,7 +115,7 @@ export async function listCategoriesWithAccounts(options: {
       body: query,
       cache: "no-store",
     },
-    { name: "budgetingService.POST /sql (list categories+accounts)" },
+    { name: "settingsService.POST /sql (list categories+accounts)" },
   );
 
   if (!res.ok) {
@@ -220,7 +220,7 @@ export async function createAccount(options: {
       body: query,
       cache: "no-store",
     },
-    { name: "budgetingService.POST /sql (create account)" },
+    { name: "settingsService.POST /sql (create account)" },
   );
 
   if (!res.ok) {
@@ -278,7 +278,7 @@ export async function createSubCategory(options: {
       body: query,
       cache: "no-store",
     },
-    { name: "budgetingService.POST /sql (create sub-category)" },
+    { name: "settingsService.POST /sql (create sub-category)" },
   );
 
   if (!res.ok) {

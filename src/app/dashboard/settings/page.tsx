@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { auth0 } from "@/lib/auth0";
-import BudgetingClient from "@/components/BudgetingClient";
-import { listCategoriesWithAccounts } from "@/lib/budgetingService";
+import SettingsClient from "@/components/SettingsClient";
+import { listCategoriesWithAccounts } from "@/lib/settingsService";
 
 export const dynamic = "force-dynamic";
 
-export default async function BudgetingPage() {
+export default async function SettingsPage() {
   const session = await auth0.getSession();
   if (!session?.user) {
     redirect("/");
@@ -27,7 +27,7 @@ export default async function BudgetingPage() {
   }
 
   return (
-    <BudgetingClient
+    <SettingsClient
       categories={categories.status === "ok" ? categories.categories : []}
     />
   );

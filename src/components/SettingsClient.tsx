@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { TbAccount } from "@/lib/budgetingService";
+import type { TbAccount } from "@/lib/settingsService";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
 type AccountType = (typeof ACCOUNT_TYPES)[number];
@@ -48,7 +48,7 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
 
 type ModalType = "account" | "subcategory" | null;
 
-export default function BudgetingClient({ categories }: { categories: Category[] }) {
+export default function SettingsClient({ categories }: { categories: Category[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [modalType, setModalType] = useState<ModalType>(null);
@@ -87,7 +87,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     setIsBusy(true);
 
     try {
-      const res = await fetch("/api/budgeting/accounts", {
+      const res = await fetch("/api/settings/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categoryId: modalCategoryId, name: accountName.trim(), type: accountType }),
@@ -115,7 +115,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     setIsBusy(true);
 
     try {
-      const res = await fetch("/api/budgeting/categories", {
+      const res = await fetch("/api/settings/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parentCategoryId: modalCategoryId, name: subcategoryName.trim() }),
@@ -179,7 +179,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     return (
       <div key={cat.id} style={containerStyle}>
         {isSub ? (
-          <div className="txn-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/budgeting/${cat.id}`)}>
+          <div className="txn-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/dashboard/settings/${cat.id}`)}>
             <div className="txn-left">
               <div className="txn-name">{cat.name}</div>
               <div className="txn-meta">Accounts: {cat.accounts.length}</div>
@@ -189,7 +189,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
               className="button button-ghost"
               onClick={(e) => {
                 e.stopPropagation();
-                router.push(`/dashboard/budgeting/${cat.id}`);
+                router.push(`/dashboard/settings/${cat.id}`);
               }}
               aria-label={`Expand ${cat.name} category`}
               style={{ padding: "8px 12px" }}
@@ -299,7 +299,7 @@ export default function BudgetingClient({ categories }: { categories: Category[]
                 <button
                   type="button"
                   className="button button-ghost"
-                  onClick={() => router.push(`/dashboard/budgeting/${cat.id}`)}
+                  onClick={() => router.push(`/dashboard/settings/${cat.id}`)}
                   aria-label={`Expand ${cat.name} category`}
                   style={{ padding: "8px 12px" }}
                 >
@@ -337,8 +337,8 @@ export default function BudgetingClient({ categories }: { categories: Category[]
     <div className="dashboard-page">
       <header className="dashboard-header">
         <div>
-          <h1 className="dashboard-title">Budgeting</h1>
-          <p className="dashboard-subtitle">Categories and their accounts.</p>
+          <h1 className="dashboard-title">Settings</h1>
+          <p className="dashboard-subtitle">Manage categories and their accounts.</p>
         </div>
       </header>
 

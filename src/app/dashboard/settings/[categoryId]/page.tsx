@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth0 } from "@/lib/auth0";
 import CategoryDetailClient from "@/components/CategoryDetailClient";
-import { listCategoriesWithAccounts } from "@/lib/budgetingService";
+import { listCategoriesWithAccounts } from "@/lib/settingsService";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +53,7 @@ export default async function CategoryDetailPage({ params }: PageProps) {
     // Debug: Log what we're looking for vs what we have
     console.error(`Category not found. Looking for: "${decodedCategoryId}"`);
     console.error(`Available categories:`, allCategories.map(c => ({ id: c.id, name: c.name })));
-    redirect("/dashboard/budgeting");
+    redirect("/dashboard/settings");
   }
 
   return <CategoryDetailClient category={category} />;

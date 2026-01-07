@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { ensureUserExists } from "@/lib/userService";
-import { createSubCategory } from "@/lib/budgetingService";
+import { createSubCategory } from "@/lib/settingsService";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ function extractFirstResultId(payload: unknown): string | undefined {
 }
 
 export async function POST(req: Request) {
-  console.log("[api] POST /api/budgeting/categories");
+  console.log("[api] POST /api/settings/categories");
 
   const session = await auth0.getSession();
   if (!session?.user) {

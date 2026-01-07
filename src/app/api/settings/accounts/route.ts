@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
-import { createAccount } from "@/lib/budgetingService";
+import { createAccount } from "@/lib/settingsService";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
 type AccountType = (typeof ACCOUNT_TYPES)[number];
@@ -8,7 +8,7 @@ type AccountType = (typeof ACCOUNT_TYPES)[number];
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  console.log("[api] POST /api/budgeting/accounts");
+  console.log("[api] POST /api/settings/accounts");
 
   const session = await auth0.getSession();
   if (!session?.user) {
