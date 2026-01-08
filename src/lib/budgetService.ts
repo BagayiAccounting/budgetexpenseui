@@ -76,7 +76,7 @@ export type BudgetAllocation = {
 
 export type BudgetTemplateWithAllocations = BudgetTemplate & {
   allocations: BudgetAllocation[];
-  accounts: Array<{ id: string; name: string }>;
+  accounts: Array<{ id: string; name: string; defaultAccountId?: string }>;
 };
 
 export type CategoryWithBudgets = {
@@ -449,7 +449,8 @@ export async function getBudgetTemplateWithAllocations(options: {
   const query = `
     SELECT *, category_id.name AS category_name FROM budget_template WHERE id = ${templateLiteral};
     SELECT *, account_id.name AS account_name FROM budget_allocation WHERE budget_id = ${templateLiteral};
-    SELECT id, name FROM account WHERE category_id = (SELECT VALUE category_id FROM budget_template WHERE id = ${templateLiteral} LIMIT 1)[0];
+    SELECT id, name FROM account WHERE category_id = (SELECT VALUE category_id FROM budget_template WHERE id = ${templateLiteral} LIMIT 1)[0] AND id != (SELECT VALUE default_account_id FROM (SELECT VALUE category_id FROM budget_template WHERE id = ${templateLiteral} LIMIT 1)[0])[0];
+    SELECT id, name, default_account_id FROM category WHERE parent_id = (SELECT VALUE category_id FROM budget_template WHERE id = ${templateLiteral} LIMIT 1)[0];
   `;
 
   const res = await fetchLogged(
@@ -482,6 +483,7 @@ export async function getBudgetTemplateWithAllocations(options: {
 
   const allocationsRaw = getResultArray<BudgetAllocationRecord & { account_name?: string }>(statements[1]);
   const accountsRaw = getResultArray<AccountRecord>(statements[2]);
+  const subcategoriesRaw = getResultArray<CategoryRecord & { default_account_id?: unknown }>(statements[3]);
 
   const templateId = thingIdToString(templateRaw.id);
   const categoryId = thingIdToString(templateRaw.category_id);
@@ -495,10 +497,21 @@ export async function getBudgetTemplateWithAllocations(options: {
     amount: typeof a.amount === "number" ? a.amount : (typeof a.amount === "string" ? parseFloat(a.amount) : 0),
   })).filter(a => a.id);
 
-  const accounts = accountsRaw.map((a) => ({
-    id: thingIdToString(a.id) || "",
-    name: typeof a.name === "string" ? a.name : "(Unnamed)",
-  })).filter(a => a.id);
+  // Combine regular accounts and subcategory default accounts
+  const accounts = [
+    ...accountsRaw.map((a) => ({
+      id: thingIdToString(a.id) || "",
+      name: typeof a.name === "string" ? a.name : "(Unnamed)",
+    })).filter(a => a.id),
+    ...subcategoriesRaw.map((sc) => {
+      const defaultAccountId = thingIdToString(sc.default_account_id);
+      return {
+        id: defaultAccountId || "",
+        name: typeof sc.name === "string" ? sc.name : "(Unnamed subcategory)",
+        defaultAccountId,
+      };
+    }).filter(a => a.id),
+  ];
 
   const template: BudgetTemplateWithAllocations = {
     id: templateId,
