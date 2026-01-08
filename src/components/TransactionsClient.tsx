@@ -203,19 +203,19 @@ export default function TransactionsClient({
       <div className="panel">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Transfers</div>
+            <div className="panel-title">Transactions</div>
             <div className="panel-subtitle">
               {transfers.length > 0
-                ? `${transfers.length} transfer${transfers.length === 1 ? "" : "s"} found`
-                : "No transfers found"}
+                ? `${transfers.length} transaction${transfers.length === 1 ? "" : "s"} found`
+                : "No transactions found"}
             </div>
           </div>
         </div>
 
         {transfers.length === 0 ? (
           <div style={{ padding: "40px", textAlign: "center", color: "var(--text-secondary)" }}>
-            <p>No transfers found for this category.</p>
-            <p style={{ fontSize: "14px", marginTop: "8px" }}>Click "Add Transaction" to create one.</p>
+            <p>No transactions found for this category.</p>
+            <p style={{ fontSize: "14px", marginTop: "8px" }}>Click &ldquo;Add Transaction&rdquo; to create one.</p>
           </div>
         ) : (
           <div className="table">

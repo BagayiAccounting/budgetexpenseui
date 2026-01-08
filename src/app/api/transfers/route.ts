@@ -1,32 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
-import { fetchLogged } from "@/lib/http";
-
-const DEFAULT_BASE_URL = "http://localhost:8001";
-
-function getBaseUrl() {
-  return process.env.BUDGET_SERVICE_BASE_URL || process.env.USER_SERVICE_BASE_URL || DEFAULT_BASE_URL;
-}
-
-function getOptionalSurrealHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const ns = process.env.SURREAL_NS;
-  const db = process.env.SURREAL_DB;
-  if (ns) headers["Surreal-NS"] = ns;
-  if (db) headers["Surreal-DB"] = db;
-  return headers;
-}
-
-function toSurrealThingLiteral(value: string): string | null {
-  const v = (value || "").trim();
-  const idx = v.indexOf(":");
-  if (idx <= 0 || idx === v.length - 1) return null;
-  const table = v.slice(0, idx);
-  const id = v.slice(idx + 1);
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) return null;
-  if (!/^[A-Za-z0-9_]+$/.test(id)) return null;
-  return `${table}:${id}`;
-}
+import { executeSurrealQL, toSurrealThingLiteral, getResultArray } from "@/lib/surrealdb";
 
 export async function POST(req: NextRequest) {
   try {
@@ -67,36 +41,27 @@ export async function POST(req: NextRequest) {
 
     // Get user ID for created_by field
     const userQuery = "SELECT VALUE id FROM user WHERE auth_sub = $token.sub LIMIT 1;";
-    const baseUrl = getBaseUrl();
-    const surrealHeaders = getOptionalSurrealHeaders();
+    
+    const userResult = await executeSurrealQL({
+      token,
+      query: userQuery,
+      logName: "transferAPI.POST /sql (get user)",
+    });
 
-    const userRes = await fetchLogged(
-      `${baseUrl}/sql`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "text/plain",
-          ...surrealHeaders,
-        },
-        body: userQuery,
-      },
-      { name: "transferAPI.POST /sql (get user)" },
-    );
-
-    if (!userRes.ok) {
-      return NextResponse.json({ error: "Failed to get user", reason: "user_fetch_failed" }, { status: 500 });
+    if (!userResult.success) {
+      return NextResponse.json(
+        { error: "Failed to get user", reason: userResult.error, details: userResult.details },
+        { status: 500 },
+      );
     }
 
-    const userData = await userRes.json();
-    const userId = userData?.[0]?.result?.[0];
+    const userId = getResultArray(userResult.data[0])[0];
 
     if (!userId) {
       return NextResponse.json({ error: "User not found", reason: "user_not_found" }, { status: 404 });
     }
 
-    const userLiteral = toSurrealThingLiteral(userId);
+    const userLiteral = toSurrealThingLiteral(String(userId));
     if (!userLiteral) {
       return NextResponse.json({ error: "Invalid user ID", reason: "invalid_user_id" }, { status: 500 });
     }
@@ -112,31 +77,20 @@ export async function POST(req: NextRequest) {
   created_by: ${userLiteral}${description ? `,\n  description: ${JSON.stringify(description)}` : ""}${label ? `,\n  label: ${JSON.stringify(label)}` : ""}
 };`;
 
-    const res = await fetchLogged(
-      `${baseUrl}/sql`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "text/plain",
-          ...surrealHeaders,
-        },
-        body: query,
-      },
-      { name: "transferAPI.POST /sql (create transfer)" },
-    );
+    const createResult = await executeSurrealQL({
+      token,
+      query,
+      logName: "transferAPI.POST /sql (create transfer)",
+    });
 
-    if (!res.ok) {
-      const errorText = await res.text();
+    if (!createResult.success) {
       return NextResponse.json(
-        { error: "Failed to create transfer", reason: "create_failed", details: errorText },
-        { status: res.status },
+        { error: "Failed to create transfer", reason: createResult.error, details: createResult.details },
+        { status: 400 },
       );
     }
 
-    const data = await res.json();
-    const result = data?.[0]?.result?.[0];
+    const result = getResultArray(createResult.data[0])[0];
 
     if (!result) {
       return NextResponse.json({ error: "No transfer created", reason: "empty_result" }, { status: 500 });
