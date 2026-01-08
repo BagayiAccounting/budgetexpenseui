@@ -1,8 +1,9 @@
-import { fetchLogged } from "@/lib/http";
-
-const DEFAULT_BASE_URL = "http://localhost:8001";
-
-type SurrealQueryResult = { status?: string; time?: string; result?: unknown };
+import {
+  executeSurrealQL,
+  getResultArray,
+  thingIdToString,
+  toSurrealThingLiteral,
+} from "@/lib/surrealdb";
 
 type CategoryRecord = {
   id: unknown;
@@ -47,51 +48,17 @@ export type Account = {
   name: string;
   categoryName: string;
   categoryId: string;
+  balance?: string;
 };
 
 function asTbAccount(value: unknown): TbAccount | undefined {
   if (!value || typeof value !== "object") return undefined;
-  // We expect Surreal to always return this exact shape; keep runtime checks minimal.
-  return value as TbAccount;
-}
-
-function getBaseUrl() {
-  return process.env.BUDGET_SERVICE_BASE_URL || process.env.USER_SERVICE_BASE_URL || DEFAULT_BASE_URL;
-}
-
-function getOptionalSurrealHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const ns = process.env.SURREAL_NS;
-  const db = process.env.SURREAL_DB;
-  if (ns) headers["Surreal-NS"] = ns;
-  if (db) headers["Surreal-DB"] = db;
-  return headers;
-}
-
-function thingIdToString(value: unknown): string | undefined {
-  if (!value) return undefined;
-  if (typeof value === "string") return value;
-  // Some Surreal clients return { tb: "table", id: "..." }
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const tb = record["tb"];
-    const id = record["id"];
-    if (typeof tb === "string" && typeof id === "string") {
-      return `${tb}:${id}`;
-    }
-    if (typeof id === "string") return id;
+  const obj = value as Record<string, unknown>;
+  // Check if it's wrapped in a response object
+  if (obj.data && typeof obj.data === "object") {
+    return obj.data as TbAccount;
   }
-  return undefined;
-}
-
-function parseSurrealSqlPayload(payload: unknown): SurrealQueryResult[] | null {
-  if (!Array.isArray(payload)) return null;
-  return payload as SurrealQueryResult[];
-}
-
-function getResultArray<T = unknown>(statement: SurrealQueryResult | undefined): T[] {
-  const result = statement?.result;
-  return Array.isArray(result) ? (result as T[]) : [];
+  return value as TbAccount;
 }
 
 export async function listCategoriesWithAccounts(options: {
@@ -100,42 +67,20 @@ export async function listCategoriesWithAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}/sql`;
-  const surrealHeaders = getOptionalSurrealHeaders();
-
-  // Minimal assumptions about schema:
-  // - categories stored in table `category`
-  // - accounts stored in table `account` with field `category_id` pointing to the category thing
   const query = "SELECT * FROM category; SELECT *, fn::tb_account(tb_account_id) AS tb_account FROM account;";
 
-  const res = await fetchLogged(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "text/plain",
-        ...surrealHeaders,
-      },
-      body: query,
-      cache: "no-store",
-    },
-    { name: "settingsService.POST /sql (list categories+accounts)" },
-  );
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query,
+    logName: "settingsService.POST /sql (list categories+accounts)",
+  });
 
-  if (!res.ok) {
-    const body = await safeText(res);
-    return { status: "skipped", reason: `list_failed_${res.status}_${truncate(body)}` };
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
   }
 
-  const payload = await safeJson(res);
-  const statements = parseSurrealSqlPayload(payload);
-  if (!statements) return { status: "skipped", reason: "unrecognized_sql_response" };
-
-  const categoriesRaw = getResultArray<CategoryRecord>(statements[0]);
-  const accountsRaw = getResultArray<AccountRecord>(statements[1]);
+  const categoriesRaw = getResultArray<CategoryRecord>(result.data[0]);
+  const accountsRaw = getResultArray<AccountRecord>(result.data[1]);
 
   const allCategories: CategoryWithAccounts[] = categoriesRaw
     .map((c) => {
@@ -147,7 +92,7 @@ export async function listCategoriesWithAccounts(options: {
         id,
         name,
         parentId,
-        accounts: [] as Array<{ id: string; name: string; tbAccount?: TbAccount }> ,
+        accounts: [] as Array<{ id: string; name: string; tbAccount?: TbAccount }>,
         subcategories: [] as CategoryWithAccounts[],
       };
     })
@@ -184,7 +129,6 @@ export async function listCategoriesWithAccounts(options: {
     for (const child of node.subcategories) sortCategoryTree(child);
   }
 
-  // Stable sort for nicer UI.
   rootCategories.sort((a, b) => a.name.localeCompare(b.name));
   for (const c of rootCategories) sortCategoryTree(c);
 
@@ -197,38 +141,19 @@ export async function listAllAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}/sql`;
-  const surrealHeaders = getOptionalSurrealHeaders();
+  const query = "SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account;";
 
-  const query = "SELECT *, category_id.name AS category_name FROM account;";
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query,
+    logName: "settingsService.POST /sql (list all accounts)",
+  });
 
-  const res = await fetchLogged(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "text/plain",
-        ...surrealHeaders,
-      },
-      body: query,
-      cache: "no-store",
-    },
-    { name: "settingsService.POST /sql (list all accounts)" },
-  );
-
-  if (!res.ok) {
-    const body = await safeText(res);
-    return { status: "skipped", reason: `list_failed_${res.status}_${truncate(body)}` };
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
   }
 
-  const payload = await safeJson(res);
-  const statements = parseSurrealSqlPayload(payload);
-  if (!statements) return { status: "skipped", reason: "unrecognized_sql_response" };
-
-  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(statements[0]);
+  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(result.data[0]);
 
   const accounts: Account[] = accountsRaw
     .map((a) => {
@@ -236,8 +161,10 @@ export async function listAllAccounts(options: {
       const name = typeof a.name === "string" ? a.name : "(Unnamed)";
       const categoryName = typeof a.category_name === "string" ? a.category_name : "(Unknown)";
       const categoryId = thingIdToString(a.category_id) || "";
+      const tbAccount = asTbAccount(a.tb_account);
+      const balance = tbAccount?.book_balance;
       if (!id) return null;
-      return { id, name, categoryName, categoryId };
+      return { id, name, categoryName, categoryId, balance };
     })
     .filter(Boolean) as Account[];
 
@@ -258,42 +185,22 @@ export async function createAccount(options: {
   const trimmed = (name || "").trim();
   if (!trimmed) return { status: "skipped", reason: "missing_name" };
 
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}/sql`;
-  const surrealHeaders = getOptionalSurrealHeaders();
-
   const categoryLiteral = toSurrealThingLiteral(categoryThingId);
   if (!categoryLiteral) return { status: "skipped", reason: "invalid_category_id" };
 
   const query = `CREATE account CONTENT {\n  name: ${JSON.stringify(trimmed)},\n  category_id: ${categoryLiteral},\n  type: ${JSON.stringify(type)}\n};`;
 
-  const res = await fetchLogged(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "text/plain",
-        ...surrealHeaders,
-      },
-      body: query,
-      cache: "no-store",
-    },
-    { name: "settingsService.POST /sql (create account)" },
-  );
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query,
+    logName: "settingsService.POST /sql (create account)",
+  });
 
-  if (!res.ok) {
-    const body = await safeText(res);
-    return { status: "skipped", reason: `create_failed_${res.status}_${truncate(body)}` };
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
   }
 
-  const payload = await safeJson(res);
-  const statements = parseSurrealSqlPayload(payload);
-  if (!statements) return { status: "skipped", reason: "create_unrecognized_sql_response" };
-
-  const first = statements[0];
-  const created = getResultArray<unknown>(first);
+  const created = getResultArray<unknown>(result.data[0]);
   if (!created.length) {
     return { status: "skipped", reason: "create_empty_result" };
   }
@@ -319,77 +226,20 @@ export async function createSubCategory(options: {
   const parentLiteral = toSurrealThingLiteral(parentCategoryThingId);
   if (!parentLiteral) return { status: "skipped", reason: "invalid_parent_category_id" };
 
-  const baseUrl = getBaseUrl();
-  const url = `${baseUrl}/sql`;
-  const surrealHeaders = getOptionalSurrealHeaders();
-
   const query = `CREATE category CONTENT {\n  name: ${JSON.stringify(trimmed)},\n  user_id: ${userLiteral},\n  parent_id: ${parentLiteral}\n};`;
 
-  const res = await fetchLogged(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "text/plain",
-        ...surrealHeaders,
-      },
-      body: query,
-      cache: "no-store",
-    },
-    { name: "settingsService.POST /sql (create sub-category)" },
-  );
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query,
+    logName: "settingsService.POST /sql (create sub-category)",
+  });
 
-  if (!res.ok) {
-    const body = await safeText(res);
-    return { status: "skipped", reason: `create_category_failed_${res.status}_${truncate(body)}` };
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
   }
 
-  const payload = await safeJson(res);
-  const statements = parseSurrealSqlPayload(payload);
-  if (!statements) return { status: "skipped", reason: "create_category_unrecognized_sql_response" };
-
-  const created = getResultArray<unknown>(statements[0]);
+  const created = getResultArray<unknown>(result.data[0]);
   if (!created.length) return { status: "skipped", reason: "create_category_empty_result" };
 
   return { status: "created" };
-}
-
-function parseSurrealThingId(value: string): { table: string | null; id: string | null } {
-  const v = (value || "").trim();
-  const idx = v.indexOf(":");
-  if (idx <= 0 || idx === v.length - 1) return { table: null, id: null };
-  return { table: v.slice(0, idx), id: v.slice(idx + 1) };
-}
-
-function toSurrealThingLiteral(value: string): string | null {
-  const { table, id } = parseSurrealThingId(value);
-  if (!table || !id) return null;
-  // Inserted unquoted into SQL; allow only safe characters.
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) return null;
-  if (!/^[A-Za-z0-9_]+$/.test(id)) return null;
-  return `${table}:${id}`;
-}
-
-async function safeJson(res: Response): Promise<unknown> {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-async function safeText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return "";
-  }
-}
-
-function truncate(value: string, max = 200): string {
-  const v = (value || "").replace(/\s+/g, " ").trim();
-  if (v.length <= max) return v;
-  return `${v.slice(0, max)}…`;
 }

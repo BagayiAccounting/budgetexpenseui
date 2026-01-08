@@ -8,6 +8,7 @@ type Account = {
   name: string;
   categoryName: string;
   categoryId: string;
+  balance?: string;
 };
 
 type Category = {
@@ -32,6 +33,17 @@ type TransferType = (typeof TRANSFER_TYPES)[number];
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function formatBalance(balance?: string): string {
+  if (!balance) return "";
+  try {
+    const num = parseFloat(balance);
+    if (isNaN(num)) return "";
+    return formatNumber(num);
+  } catch {
+    return "";
+  }
 }
 
 function formatDate(dateString: string): string {
@@ -327,7 +339,7 @@ export default function TransactionsClient({
                   <option value="">Select account</option>
                   {accounts.map((acc) => (
                     <option key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.categoryName})
+                      {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
                     </option>
                   ))}
                 </select>
@@ -347,7 +359,7 @@ export default function TransactionsClient({
                   <option value="">Select account</option>
                   {accounts.map((acc) => (
                     <option key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.categoryName})
+                      {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
                     </option>
                   ))}
                 </select>
