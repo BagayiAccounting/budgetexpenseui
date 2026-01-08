@@ -46,6 +46,7 @@ export type Account = {
   id: string;
   name: string;
   categoryName: string;
+  categoryId: string;
 };
 
 function asTbAccount(value: unknown): TbAccount | undefined {
@@ -234,8 +235,9 @@ export async function listAllAccounts(options: {
       const id = thingIdToString(a.id);
       const name = typeof a.name === "string" ? a.name : "(Unnamed)";
       const categoryName = typeof a.category_name === "string" ? a.category_name : "(Unknown)";
+      const categoryId = thingIdToString(a.category_id) || "";
       if (!id) return null;
-      return { id, name, categoryName };
+      return { id, name, categoryName, categoryId };
     })
     .filter(Boolean) as Account[];
 
