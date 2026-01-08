@@ -337,11 +337,13 @@ export default function TransactionsClient({
                   style={{ width: "100%" }}
                 >
                   <option value="">Select account</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
-                    </option>
-                  ))}
+                  {accounts
+                    .filter((acc) => acc.id !== toAccountId)
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -357,11 +359,13 @@ export default function TransactionsClient({
                   style={{ width: "100%" }}
                 >
                   <option value="">Select account</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
-                    </option>
-                  ))}
+                  {accounts
+                    .filter((acc) => acc.id !== fromAccountId)
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
+                      </option>
+                    ))}
                 </select>
               </div>
 
