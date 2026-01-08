@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const fullNavItems = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/transactions", label: "Transactions" },
+  { href: "/dashboard/budgets", label: "Budgets" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
 

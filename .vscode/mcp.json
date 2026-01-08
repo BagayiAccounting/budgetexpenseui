@@ -1,0 +1,18 @@
+{
+	"servers": {
+		"SurrealDB": {
+			"command": "docker",
+			"args": [
+				"run",
+				"--rm",
+				"-i",
+				"--pull",
+				"always",
+				"surrealdb/surrealmcp:latest",
+				"start"
+			],
+			"type": "stdio"
+		}
+	},
+	"inputs": []
+}
