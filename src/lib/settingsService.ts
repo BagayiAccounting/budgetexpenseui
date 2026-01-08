@@ -42,6 +42,12 @@ export type CategoryWithAccounts = {
 export type AccountType = "asset" | "expense" | "liability" | "revenue" | "equity";
 const ACCOUNT_TYPES: AccountType[] = ["asset", "expense", "liability", "revenue", "equity"];
 
+export type Account = {
+  id: string;
+  name: string;
+  categoryName: string;
+};
+
 function asTbAccount(value: unknown): TbAccount | undefined {
   if (!value || typeof value !== "object") return undefined;
   // We expect Surreal to always return this exact shape; keep runtime checks minimal.
@@ -182,6 +188,58 @@ export async function listCategoriesWithAccounts(options: {
   for (const c of rootCategories) sortCategoryTree(c);
 
   return { status: "ok", categories: rootCategories };
+}
+
+export async function listAllAccounts(options: {
+  accessToken: string | undefined;
+}): Promise<{ status: "ok"; accounts: Account[] } | { status: "skipped"; reason: string }> {
+  const { accessToken } = options;
+  if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
+
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}/sql`;
+  const surrealHeaders = getOptionalSurrealHeaders();
+
+  const query = "SELECT *, category_id.name AS category_name FROM account;";
+
+  const res = await fetchLogged(
+    url,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "text/plain",
+        ...surrealHeaders,
+      },
+      body: query,
+      cache: "no-store",
+    },
+    { name: "settingsService.POST /sql (list all accounts)" },
+  );
+
+  if (!res.ok) {
+    const body = await safeText(res);
+    return { status: "skipped", reason: `list_failed_${res.status}_${truncate(body)}` };
+  }
+
+  const payload = await safeJson(res);
+  const statements = parseSurrealSqlPayload(payload);
+  if (!statements) return { status: "skipped", reason: "unrecognized_sql_response" };
+
+  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(statements[0]);
+
+  const accounts: Account[] = accountsRaw
+    .map((a) => {
+      const id = thingIdToString(a.id);
+      const name = typeof a.name === "string" ? a.name : "(Unnamed)";
+      const categoryName = typeof a.category_name === "string" ? a.category_name : "(Unknown)";
+      if (!id) return null;
+      return { id, name, categoryName };
+    })
+    .filter(Boolean) as Account[];
+
+  return { status: "ok", accounts };
 }
 
 export async function createAccount(options: {
