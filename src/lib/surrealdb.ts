@@ -1,6 +1,6 @@
 import { fetchLogged } from "@/lib/http";
 
-const DEFAULT_BASE_URL = "http://localhost:8001";
+import { getSurrealBaseUrl } from "@/lib/surrealEndpoint";
 
 type SurrealQueryResult = {
   status?: string;
@@ -9,7 +9,7 @@ type SurrealQueryResult = {
 };
 
 export function getBaseUrl(): string {
-  return process.env.BUDGET_SERVICE_BASE_URL || process.env.USER_SERVICE_BASE_URL || DEFAULT_BASE_URL;
+  return getSurrealBaseUrl();
 }
 
 export function getOptionalSurrealHeaders(): Record<string, string> {

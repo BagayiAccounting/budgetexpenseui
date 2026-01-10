@@ -1,20 +1,8 @@
 import type { User } from "@auth0/nextjs-auth0/types";
 import { fetchLogged } from "@/lib/http";
 
-const DEFAULT_BASE_URL = "http://localhost:8001";
-
-function getUserServiceBaseUrl() {
-  return process.env.USER_SERVICE_BASE_URL || DEFAULT_BASE_URL;
-}
-
-function getOptionalSurrealHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const ns = process.env.SURREAL_NS;
-  const db = process.env.SURREAL_DB;
-  if (ns) headers["Surreal-NS"] = ns;
-  if (db) headers["Surreal-DB"] = db;
-  return headers;
-}
+import { getUserServiceBaseUrl } from "@/lib/surrealEndpoint";
+import { getOptionalSurrealHeaders } from "@/lib/surrealdb";
 
 function summarizeJwt(token: string): string {
   try {
@@ -106,7 +94,7 @@ export async function ensureUserExists(options: {
   const createPayload = {
     email: user.email,
     name: user.name,
-    nickname: (user as any).nickname ?? user.nickname,
+    nickname: (user as User & { nickname?: string }).nickname ?? user.nickname,
     picture: user.picture,
     auth_sub: user.sub,
   };
@@ -142,10 +130,11 @@ export async function ensureUserExists(options: {
 
 function isEmptySurrealResult(payload: unknown): boolean {
   if (!Array.isArray(payload) || payload.length === 0) return false;
-  const first = payload[0] as any;
+  const first = payload[0];
   if (!first || typeof first !== "object") return false;
-  if (!Object.prototype.hasOwnProperty.call(first, "result")) return false;
-  const result = first.result;
+  const record = first as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "result")) return false;
+  const result = record["result"];
   return Array.isArray(result) && result.length === 0;
 }
 
