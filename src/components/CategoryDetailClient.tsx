@@ -46,7 +46,7 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
   return rows;
 }
 
-type ModalType = "account" | "subcategory" | "mpesa" | null;
+type ModalType = "account" | "subcategory" | "mpesa" | "link-mpesa" | null;
 
 type MpesaIntegration = {
   id: string;
@@ -80,6 +80,12 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [utilityAccountId, setUtilityAccountId] = useState("");
   const [workingAccountId, setWorkingAccountId] = useState("");
   const [unlinkedAccountId, setUnlinkedAccountId] = useState("");
+  
+  // M-Pesa link states
+  const [availableMpesaIntegrations, setAvailableMpesaIntegrations] = useState<Array<{ id: string; paybillName: string; businessShortCode: string }>>([]);
+  const [selectedMpesaIntegrationId, setSelectedMpesaIntegrationId] = useState("");
+  const [mpesaLink, setMpesaLink] = useState<{ id: string; mpesaIntegrationId: string } | null>(null);
+  const [mpesaLinkId, setMpesaLinkId] = useState("");
 
   // Function to load M-Pesa integration
   const loadMpesaIntegration = async () => {
@@ -101,9 +107,42 @@ export default function CategoryDetailClient({ category }: { category: Category 
     }
   };
 
-  // Load M-Pesa integration on mount
+  // Function to load M-Pesa link
+  const loadMpesaLink = async () => {
+    try {
+      const res = await fetch(`/api/settings/category-mpesa-link?categoryId=${encodeURIComponent(category.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.links && data.links.length > 0) {
+          setMpesaLink(data.links[0]);
+        } else {
+          setMpesaLink(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load M-Pesa link:", err);
+    }
+  };
+
+  // Function to load available M-Pesa integrations
+  const loadAvailableMpesaIntegrations = async () => {
+    try {
+      const res = await fetch("/api/settings/category-mpesa-link?listIntegrations=true");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.integrations) {
+          setAvailableMpesaIntegrations(data.integrations);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load available M-Pesa integrations:", err);
+    }
+  };
+
+  // Load M-Pesa integration and link on mount
   useEffect(() => {
     void loadMpesaIntegration();
+    void loadMpesaLink();
   }, [category.id]);
 
   function openModal(type: ModalType, categoryId: string) {
@@ -423,6 +462,30 @@ export default function CategoryDetailClient({ category }: { category: Category 
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                 >
                   {mpesaIntegration ? "Configure M-Pesa" : "Add M-Pesa Integration"}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowHeaderMenu(false);
+                    await loadAvailableMpesaIntegrations();
+                    openModal("link-mpesa", category.id);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "12px 16px",
+                    textAlign: "left",
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    color: "#000000",
+                    fontWeight: 500,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  {mpesaLink ? "Change M-Pesa Link" : "Link to M-Pesa Integration"}
                 </button>
               </div>
             )}
@@ -855,6 +918,200 @@ export default function CategoryDetailClient({ category }: { category: Category 
                   disabled={isBusy || !businessShortCode.trim() || !paybillName.trim()}
                 >
                   {isBusy ? "Configuring…" : "Configure M-Pesa"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for linking to M-Pesa Integration */}
+      {modalType === "link-mpesa" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Link to M-Pesa Integration</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              {mpesaLink && (
+                <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "13px", marginBottom: "4px" }}>
+                    Current link will be replaced
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Select M-Pesa Integration
+                </label>
+                {availableMpesaIntegrations.length === 0 ? (
+                  <div style={{ padding: "12px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px", fontSize: "14px" }}>
+                    No M-Pesa integrations available. Create one first.
+                  </div>
+                ) : (
+                  <select
+                    className="setup-input"
+                    value={selectedMpesaIntegrationId}
+                    onChange={(e) => setSelectedMpesaIntegrationId(e.target.value)}
+                    disabled={isBusy}
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Select an integration</option>
+                    {availableMpesaIntegrations.map((integration) => (
+                      <option key={integration.id} value={integration.id}>
+                        {integration.paybillName} ({integration.businessShortCode})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Link ID (for M-Pesa payments)
+                </label>
+                <input
+                  className="setup-input"
+                  value={mpesaLinkId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Only allow alphanumeric characters
+                    if (/^[a-zA-Z0-9]*$/.test(value)) {
+                      setMpesaLinkId(value.slice(0, 13));
+                    }
+                  }}
+                  placeholder="e.g., ACC001 or RENT2024"
+                  disabled={isBusy}
+                  maxLength={13}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  Alphanumeric only, max 13 characters. Used when paying via M-Pesa.
+                </div>
+              </div>
+
+              {error && (
+                <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-error, #ffebee)", borderRadius: "8px", fontSize: "14px", color: "var(--text-error, #c62828)" }}>
+                  {error}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                {mpesaLink && (
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    onClick={async () => {
+                      setError(null);
+                      setIsBusy(true);
+
+                      try {
+                        const res = await fetch(`/api/settings/category-mpesa-link?categoryId=${encodeURIComponent(category.id)}`, {
+                          method: "DELETE",
+                        });
+
+                        if (!res.ok) {
+                          const data = await res.json().catch(() => null);
+                          setError((data && data.error) || "Failed to remove link");
+                          return;
+                        }
+
+                        closeModal();
+                        await loadMpesaLink();
+                        router.refresh();
+                      } catch {
+                        setError("Failed to remove link");
+                      } finally {
+                        setIsBusy(false);
+                      }
+                    }}
+                    disabled={isBusy}
+                    style={{ color: "var(--text-error, #c62828)" }}
+                  >
+                    {isBusy ? "Removing…" : "Remove Link"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="button"
+                  onClick={async () => {
+                    if (!selectedMpesaIntegrationId) {
+                      setError("Please select an M-Pesa integration");
+                      return;
+                    }
+
+                    if (!mpesaLinkId.trim()) {
+                      setError("Please enter a Link ID");
+                      return;
+                    }
+
+                    setError(null);
+                    setIsBusy(true);
+
+                    try {
+                      // If there's an existing link, delete it first
+                      if (mpesaLink) {
+                        const deleteRes = await fetch(`/api/settings/category-mpesa-link?categoryId=${encodeURIComponent(category.id)}`, {
+                          method: "DELETE",
+                        });
+
+                        if (!deleteRes.ok) {
+                          setError("Failed to remove existing link");
+                          return;
+                        }
+                      }
+
+                      // Create new link
+                      const res = await fetch("/api/settings/category-mpesa-link", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          categoryId: category.id,
+                          mpesaIntegrationId: selectedMpesaIntegrationId,
+                          linkId: mpesaLinkId.trim(),
+                        }),
+                      });
+
+                      const data = await res.json().catch(() => null);
+                      if (!res.ok) {
+                        setError((data && data.error) || "Failed to create link");
+                        return;
+                      }
+
+                      closeModal();
+                      await loadMpesaLink();
+                      router.refresh();
+                    } catch {
+                      setError("Failed to create link");
+                    } finally {
+                      setIsBusy(false);
+                    }
+                  }}
+                  disabled={isBusy || !selectedMpesaIntegrationId || !mpesaLinkId.trim() || availableMpesaIntegrations.length === 0}
+                >
+                  {isBusy ? "Linking…" : "Link Integration"}
                 </button>
               </div>
             </div>
