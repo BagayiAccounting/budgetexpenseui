@@ -84,8 +84,9 @@ export default function CategoryDetailClient({ category }: { category: Category 
   // M-Pesa link states
   const [availableMpesaIntegrations, setAvailableMpesaIntegrations] = useState<Array<{ id: string; paybillName: string; businessShortCode: string }>>([]);
   const [selectedMpesaIntegrationId, setSelectedMpesaIntegrationId] = useState("");
-  const [mpesaLink, setMpesaLink] = useState<{ id: string; mpesaIntegrationId: string } | null>(null);
+  const [mpesaLink, setMpesaLink] = useState<{ id: string; mpesaIntegrationId: string; linkId?: string } | null>(null);
   const [mpesaLinkId, setMpesaLinkId] = useState("");
+  const [mpesaLinkDetails, setMpesaLinkDetails] = useState<{ paybillName: string; businessShortCode: string; linkId: string } | null>(null);
 
   // Function to load M-Pesa integration
   const loadMpesaIntegration = async () => {
@@ -524,6 +525,44 @@ export default function CategoryDetailClient({ category }: { category: Category 
               <div className="txn-left">
                 <div className="txn-name">{mpesaIntegration.paybillName}</div>
                 <div className="txn-meta">Business Short Code: {mpesaIntegration.businessShortCode}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* M-Pesa Link Section - Show if link exists */}
+      {mpesaLink && (
+        <div className="panel">
+          <div className="panel-header">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+              <div>
+                <div className="panel-title">M-Pesa Payment Link</div>
+                <div className="panel-subtitle">Linked to paybill integration</div>
+              </div>
+              <button
+                type="button"
+                className="button button-ghost"
+                onClick={async () => {
+                  await loadAvailableMpesaIntegrations();
+                  openModal("link-mpesa", category.id);
+                }}
+                style={{ padding: "8px 12px" }}
+              >
+                Change
+              </button>
+            </div>
+          </div>
+          <div className="txn-list">
+            <div className="txn-row">
+              <div className="txn-left">
+                <div className="txn-name">Link ID: {mpesaLink.linkId || "N/A"}</div>
+                <div className="txn-meta">Integration ID: {mpesaLink.mpesaIntegrationId}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ padding: "4px 12px", backgroundColor: "var(--bg-success, #e8f5e9)", color: "var(--text-success, #2e7d32)", borderRadius: "12px", fontSize: "12px", fontWeight: 500 }}>
+                  Linked
+                </span>
               </div>
             </div>
           </div>

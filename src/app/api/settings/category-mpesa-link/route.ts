@@ -9,8 +9,9 @@ import {
 
 type LinkRecord = {
   id: unknown;
-  category_id?: unknown;
-  mpesa_paybill_integration_id?: unknown;
+  in?: unknown;
+  out?: unknown;
+  link_id?: string;
 };
 
 type MpesaIntegrationRecord = {
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid categoryId" }, { status: 400 });
     }
 
-    const query = `SELECT * FROM category_payment_integration_link WHERE category_id = ${categoryLiteral};`;
+    const query = `SELECT * FROM category_payment_integration_link WHERE in = ${categoryLiteral};`;
 
     const result = await executeSurrealQL({
       token,
@@ -89,8 +90,9 @@ export async function GET(request: NextRequest) {
     
     const formatted = links.map((link) => ({
       id: thingIdToString(link.id),
-      categoryId: thingIdToString(link.category_id),
-      mpesaIntegrationId: thingIdToString(link.mpesa_paybill_integration_id),
+      categoryId: thingIdToString(link.in),
+      mpesaIntegrationId: thingIdToString(link.out),
+      linkId: link.link_id || "",
     }));
 
     return NextResponse.json({ links: formatted });
@@ -246,7 +248,7 @@ export async function DELETE(request: NextRequest) {
       if (!categoryLiteral) {
         return NextResponse.json({ error: "Invalid category ID" }, { status: 400 });
       }
-      query = `DELETE category_payment_integration_link WHERE category_id = ${categoryLiteral};`;
+      query = `DELETE category_payment_integration_link WHERE in = ${categoryLiteral};`;
     } else {
       return NextResponse.json({ error: "Missing link ID or category ID" }, { status: 400 });
     }
