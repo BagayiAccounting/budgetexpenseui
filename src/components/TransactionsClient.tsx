@@ -77,6 +77,7 @@ export default function TransactionsClient({
 }) {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
+  const [showTransactionMenu, setShowTransactionMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
@@ -172,23 +173,117 @@ export default function TransactionsClient({
           <h1 className="dashboard-title">Transactions</h1>
           <p className="dashboard-subtitle">View and manage transfers for your accounts.</p>
         </div>
-        <button type="button" className="button" onClick={openModal} aria-label="Add transaction">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ marginRight: "8px" }}
+        <div style={{ position: "relative" }}>
+          <button 
+            type="button" 
+            className="button button-ghost" 
+            onClick={() => setShowTransactionMenu(!showTransactionMenu)} 
+            aria-label="Transaction options"
+            style={{ padding: "8px 12px" }}
           >
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          Add Transaction
-        </button>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="1"></circle>
+              <circle cx="12" cy="5" r="1"></circle>
+              <circle cx="12" cy="19" r="1"></circle>
+            </svg>
+          </button>
+          {showTransactionMenu && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                marginTop: "8px",
+                backgroundColor: "var(--bg-primary, #ffffff)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                zIndex: 10,
+                minWidth: "220px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTransactionMenu(false);
+                  openModal();
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "12px 16px",
+                  textAlign: "left",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  color: "#000000",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                📝 Record Manual Transaction
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTransactionMenu(false);
+                  alert("M-Pesa Send Money - Coming Soon!");
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "12px 16px",
+                  textAlign: "left",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  color: "#000000",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                💸 M-Pesa Send Money
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTransactionMenu(false);
+                  alert("Pay via Buy Goods - Coming Soon!");
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "12px 16px",
+                  textAlign: "left",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  color: "#000000",
+                  fontWeight: 500,
+                  borderTop: "1px solid var(--border)",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                🛒 Pay via Buy Goods
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Category Switcher */}
