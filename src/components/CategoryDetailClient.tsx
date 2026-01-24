@@ -540,17 +540,31 @@ export default function CategoryDetailClient({ category }: { category: Category 
                 <div className="panel-title">M-Pesa Payment Link</div>
                 <div className="panel-subtitle">Linked to paybill integration</div>
               </div>
-              <button
-                type="button"
-                className="button button-ghost"
-                onClick={async () => {
-                  await loadAvailableMpesaIntegrations();
-                  openModal("link-mpesa", category.id);
-                }}
-                style={{ padding: "8px 12px" }}
-              >
-                Change
-              </button>
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <button
+                  type="button"
+                  className="button button-ghost"
+                  disabled
+                  style={{ padding: "8px 12px", opacity: 0.5, cursor: "not-allowed" }}
+                  title="Coming Soon"
+                >
+                  Change
+                </button>
+                <span style={{ 
+                  position: "absolute", 
+                  top: "-24px", 
+                  right: "0", 
+                  backgroundColor: "var(--bg-secondary, #f5f5f5)", 
+                  padding: "2px 8px", 
+                  borderRadius: "4px", 
+                  fontSize: "10px", 
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                  color: "var(--text-secondary, #666)"
+                }}>
+                  Coming Soon
+                </span>
+              </div>
             </div>
           </div>
           <div className="txn-list">
