@@ -63,6 +63,7 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [modalType, setModalType] = useState<ModalType>(null);
   const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   
   // Form states
   const [accountName, setAccountName] = useState("");
@@ -346,20 +347,86 @@ export default function CategoryDetailClient({ category }: { category: Category 
   return (
     <div className="dashboard-page">
       <header className="dashboard-header">
-        <div>
-          <button
-            type="button"
-            className="button button-ghost"
-            onClick={() => router.push("/dashboard/settings")}
-            style={{ marginBottom: 8, padding: "4px 8px" }}
-          >
-            ← Back to All Categories
-          </button>
-          <h1 className="dashboard-title">{category.name}</h1>
-          <p className="dashboard-subtitle">
-            Category details with {category.accounts.length} account{category.accounts.length !== 1 ? "s" : ""} and{" "}
-            {category.subcategories.length} sub-categor{category.subcategories.length !== 1 ? "ies" : "y"}
-          </p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
+          <div>
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => router.push("/dashboard/settings")}
+              style={{ marginBottom: 8, padding: "4px 8px" }}
+            >
+              ← Back to All Categories
+            </button>
+            <h1 className="dashboard-title">{category.name}</h1>
+            <p className="dashboard-subtitle">
+              Category details with {category.accounts.length} account{category.accounts.length !== 1 ? "s" : ""} and{" "}
+              {category.subcategories.length} sub-categor{category.subcategories.length !== 1 ? "ies" : "y"}
+            </p>
+          </div>
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => setShowHeaderMenu(!showHeaderMenu)}
+              aria-label="Options"
+              style={{ padding: "8px" }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="12" cy="5" r="1"></circle>
+                <circle cx="12" cy="19" r="1"></circle>
+              </svg>
+            </button>
+            {showHeaderMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  right: 0,
+                  marginTop: "4px",
+                  backgroundColor: "var(--bg-primary, #ffffff)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                  zIndex: 10,
+                  minWidth: "180px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHeaderMenu(false);
+                    openModal("mpesa", category.id);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "12px 16px",
+                    textAlign: "left",
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    color: "#000000",
+                    fontWeight: 500,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  {mpesaIntegration ? "Configure M-Pesa" : "Add M-Pesa Integration"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -370,31 +437,25 @@ export default function CategoryDetailClient({ category }: { category: Category 
         </div>
       )}
 
-      {/* M-Pesa Integration Section */}
-      <div className="panel">
-        <div className="panel-header">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-            <div>
-              <div className="panel-title">M-Pesa Integration</div>
-              <div className="panel-subtitle">Configure M-Pesa paybill for this category</div>
-            </div>
-            <button
-              type="button"
-              className="button"
-              onClick={() => openModal("mpesa", category.id)}
-              style={{ padding: "8px 16px" }}
-            >
-              {mpesaIntegration ? "Update Config" : "Add M-Pesa Config"}
-            </button>
-          </div>
-        </div>
-        {loadingMpesa ? (
-          <div className="txn-row">
-            <div className="txn-left">
-              <div className="txn-meta">Loading M-Pesa configuration...</div>
+      {/* M-Pesa Integration Section - Only show if integration exists */}
+      {mpesaIntegration && !loadingMpesa && (
+        <div className="panel">
+          <div className="panel-header">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+              <div>
+                <div className="panel-title">M-Pesa Integration</div>
+                <div className="panel-subtitle">M-Pesa paybill configuration</div>
+              </div>
+              <button
+                type="button"
+                className="button button-ghost"
+                onClick={() => openModal("mpesa", category.id)}
+                style={{ padding: "8px 12px" }}
+              >
+                Configure
+              </button>
             </div>
           </div>
-        ) : mpesaIntegration ? (
           <div className="txn-list">
             <div className="txn-row">
               <div className="txn-left">
@@ -403,14 +464,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
               </div>
             </div>
           </div>
-        ) : (
-          <div className="txn-row">
-            <div className="txn-left">
-              <div className="txn-meta">No M-Pesa configuration set up yet</div>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-header">
