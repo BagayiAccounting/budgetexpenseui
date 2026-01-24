@@ -9,6 +9,7 @@ type CategoryRecord = {
   id: unknown;
   name?: unknown;
   parent_id?: unknown;
+  default_account_id?: unknown;
 };
 
 type AccountRecord = {
@@ -16,6 +17,7 @@ type AccountRecord = {
   name?: unknown;
   category_id?: unknown;
   tb_account?: unknown;
+  type?: unknown;
 };
 
 export type TbAccount = {
@@ -36,6 +38,7 @@ export type CategoryWithAccounts = {
   id: string;
   name: string;
   parentId?: string;
+  defaultAccountId?: string;
   accounts: Array<{ id: string; name: string; tbAccount?: TbAccount }>;
   subcategories: CategoryWithAccounts[];
 };
@@ -87,11 +90,13 @@ export async function listCategoriesWithAccounts(options: {
       const id = thingIdToString(c.id);
       const name = typeof c.name === "string" ? c.name : "(Unnamed category)";
       const parentId = thingIdToString(c.parent_id);
+      const defaultAccountId = thingIdToString(c.default_account_id);
       if (!id) return null;
       return {
         id,
         name,
         parentId,
+        defaultAccountId,
         accounts: [] as Array<{ id: string; name: string; tbAccount?: TbAccount }>,
         subcategories: [] as CategoryWithAccounts[],
       };
