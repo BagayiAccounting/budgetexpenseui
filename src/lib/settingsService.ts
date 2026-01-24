@@ -208,6 +208,38 @@ export async function createAccount(options: {
   return { status: "created" };
 }
 
+export async function createCategory(options: {
+  accessToken: string | undefined;
+  userThingId: string;
+  name: string;
+}): Promise<{ status: "created" } | { status: "skipped"; reason: string }> {
+  const { accessToken, userThingId, name } = options;
+  if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
+
+  const trimmed = (name || "").trim();
+  if (!trimmed) return { status: "skipped", reason: "missing_name" };
+
+  const userLiteral = toSurrealThingLiteral(userThingId);
+  if (!userLiteral) return { status: "skipped", reason: "invalid_user_id" };
+
+  const query = `CREATE category CONTENT {\n  name: ${JSON.stringify(trimmed)},\n  user_id: ${userLiteral}\n};`;
+
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query,
+    logName: "settingsService.POST /sql (create category)",
+  });
+
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
+  }
+
+  const created = getResultArray<unknown>(result.data[0]);
+  if (!created.length) return { status: "skipped", reason: "create_category_empty_result" };
+
+  return { status: "created" };
+}
+
 export async function createSubCategory(options: {
   accessToken: string | undefined;
   userThingId: string;

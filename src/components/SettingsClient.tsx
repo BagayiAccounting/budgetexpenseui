@@ -46,7 +46,7 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
   return rows;
 }
 
-type ModalType = "account" | "subcategory" | null;
+type ModalType = "account" | "subcategory" | "category" | null;
 
 export default function SettingsClient({ categories }: { categories: Category[] }) {
   const router = useRouter();
@@ -131,6 +131,34 @@ export default function SettingsClient({ categories }: { categories: Category[] 
       router.refresh();
     } catch {
       setError("Failed to create sub-category");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleAddCategory() {
+    if (!subcategoryName.trim()) return;
+    
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/settings/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: subcategoryName.trim() }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && (data.reason || data.error)) || "Failed to create category");
+        return;
+      }
+
+      closeModal();
+      router.refresh();
+    } catch {
+      setError("Failed to create category");
     } finally {
       setIsBusy(false);
     }
@@ -336,9 +364,19 @@ export default function SettingsClient({ categories }: { categories: Category[] 
   return (
     <div className="dashboard-page">
       <header className="dashboard-header">
-        <div>
-          <h1 className="dashboard-title">Settings</h1>
-          <p className="dashboard-subtitle">Manage categories and their accounts.</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
+          <div>
+            <h1 className="dashboard-title">Settings</h1>
+            <p className="dashboard-subtitle">Manage categories and their accounts.</p>
+          </div>
+          <button
+            type="button"
+            className="button"
+            onClick={() => openModal("category", "")}
+            style={{ padding: "8px 16px" }}
+          >
+            + New Category
+          </button>
         </div>
       </header>
 
@@ -501,6 +539,68 @@ export default function SettingsClient({ categories }: { categories: Category[] 
                   disabled={isBusy || !subcategoryName.trim()}
                 >
                   {isBusy ? "Adding…" : "Add Sub-category"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for adding standalone category */}
+      {modalType === "category" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">New Category</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px" }}>Category Name</label>
+                <input
+                  className="setup-input"
+                  value={subcategoryName}
+                  onChange={(e) => setSubcategoryName(e.target.value)}
+                  placeholder="Enter category name"
+                  disabled={isBusy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddCategory();
+                    }
+                  }}
+                  style={{ width: "100%" }}
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={handleAddCategory}
+                  disabled={isBusy || !subcategoryName.trim()}
+                >
+                  {isBusy ? "Creating…" : "Create Category"}
                 </button>
               </div>
             </div>

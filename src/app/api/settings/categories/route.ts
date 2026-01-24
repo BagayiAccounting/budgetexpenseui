@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { ensureUserExists } from "@/lib/userService";
-import { createSubCategory } from "@/lib/settingsService";
+import { createCategory, createSubCategory } from "@/lib/settingsService";
 
 export const dynamic = "force-dynamic";
 
@@ -37,9 +37,11 @@ export async function POST(req: Request) {
   const body = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
   const parentCategoryId = body?.parentCategoryId;
   const name = body?.name;
-  if (typeof parentCategoryId !== "string" || typeof name !== "string") {
-    console.log("[api] invalid_payload", { parentCategoryIdType: typeof parentCategoryId, nameType: typeof name });
-    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  
+  // name is required, parentCategoryId is optional
+  if (typeof name !== "string") {
+    console.log("[api] invalid_payload - name is required", { nameType: typeof name });
+    return NextResponse.json({ error: "invalid_payload", reason: "name is required" }, { status: 400 });
   }
 
   const audience = process.env.AUTH0_AUDIENCE || process.env.NEXT_PUBLIC_AUTH0_AUDIENCE;
@@ -70,17 +72,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: "skipped", reason: "could_not_extract_user_id" }, { status: 500 });
   }
 
-  console.log("[api] createSubCategory request", { parentCategoryId, nameLength: name.length, userThingId });
-
-  const result = await createSubCategory({
-    accessToken: token,
-    parentCategoryThingId: parentCategoryId,
-    userThingId,
-    name,
-  });
+  // If parentCategoryId is provided, create a sub-category; otherwise, create a standalone category
+  let result;
+  if (typeof parentCategoryId === "string" && parentCategoryId.trim()) {
+    console.log("[api] createSubCategory request", { parentCategoryId, nameLength: name.length, userThingId });
+    result = await createSubCategory({
+      accessToken: token,
+      parentCategoryThingId: parentCategoryId,
+      userThingId,
+      name,
+    });
+  } else {
+    console.log("[api] createCategory request", { nameLength: name.length, userThingId });
+    result = await createCategory({
+      accessToken: token,
+      userThingId,
+      name,
+    });
+  }
 
   if (result.status !== "created") {
-    console.log("[api] createSubCategory failed", result);
+    console.log("[api] create category failed", result);
     const reason = (result as { reason?: unknown }).reason;
     const isClientError = typeof reason === "string" && (reason.startsWith("missing_") || reason.startsWith("invalid_"));
     return NextResponse.json(result, { status: isClientError ? 400 : 500 });
