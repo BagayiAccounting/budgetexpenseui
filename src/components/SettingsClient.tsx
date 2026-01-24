@@ -134,6 +134,59 @@ export default function SettingsClient({ categories }: { categories: Category[] 
     }
   }
 
+  function getDefaultAccountBalance(cat: Category): string {
+    const defaultAccount = cat.accounts.find(a => a.id === cat.defaultAccountId);
+    if (!defaultAccount?.tbAccount) return "-";
+    
+    const rows = rowsFromTbAccount(defaultAccount.tbAccount, true);
+    const bookRow = rows.find(r => r.label === "Book");
+    return bookRow ? bookRow.text : "-";
+  }
+
+  function countTotalSubcategories(cat: Category): number {
+    let count = cat.subcategories.length;
+    for (const sub of cat.subcategories) {
+      count += countTotalSubcategories(sub);
+    }
+    return count;
+  }
+
+  function renderCategoryRow(cat: Category) {
+    const balance = getDefaultAccountBalance(cat);
+    const totalSubcategories = countTotalSubcategories(cat);
+
+    return (
+      <tr
+        key={cat.id}
+        style={{
+          borderBottom: "1px solid var(--border)",
+          cursor: "pointer",
+        }}
+        onClick={() => router.push(`/dashboard/settings/${cat.id}`)}
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+      >
+        <td style={{ padding: "16px", fontWeight: 500 }}>{cat.name}</td>
+        <td style={{ padding: "16px", textAlign: "right", fontFamily: "monospace" }}>{balance}</td>
+        <td style={{ padding: "16px", textAlign: "center" }}>{cat.accounts.length}</td>
+        <td style={{ padding: "16px", textAlign: "center" }}>{totalSubcategories}</td>
+        <td style={{ padding: "16px", textAlign: "right" }}>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/dashboard/settings/${cat.id}`);
+            }}
+            style={{ padding: "6px 12px", fontSize: "13px" }}
+          >
+            View →
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
   function renderAccounts(accounts: Category["accounts"], cat: Category) {
     if (accounts.length === 0) {
       return (
@@ -370,12 +423,23 @@ export default function SettingsClient({ categories }: { categories: Category[] 
           </div>
         </div>
       ) : (
-        <div className="dashboard-grid">
-          {categories.map((cat) => (
-            <div key={cat.id} className="panel">
-              {renderCategoryBlock(cat, 0)}
-            </div>
-          ))}
+        <div className="panel">
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                  <th style={{ padding: "12px", textAlign: "left", fontWeight: 600, fontSize: "14px" }}>Name</th>
+                  <th style={{ padding: "12px", textAlign: "right", fontWeight: 600, fontSize: "14px" }}>Balance</th>
+                  <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, fontSize: "14px" }}>Accounts</th>
+                  <th style={{ padding: "12px", textAlign: "center", fontWeight: 600, fontSize: "14px" }}>Sub-categories</th>
+                  <th style={{ padding: "12px", textAlign: "right", fontWeight: 600, fontSize: "14px" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((cat) => renderCategoryRow(cat))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
