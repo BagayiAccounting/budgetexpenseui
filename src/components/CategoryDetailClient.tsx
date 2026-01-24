@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { TbAccount } from "@/lib/settingsService";
 
@@ -46,7 +46,16 @@ function rowsFromTbAccount(tbAccount: TbAccount | undefined): Array<{ label: str
   return rows;
 }
 
-type ModalType = "account" | "subcategory" | null;
+type ModalType = "account" | "subcategory" | "mpesa" | null;
+
+type MpesaIntegration = {
+  id: string;
+  businessShortCode: string;
+  paybillName: string;
+  utilityAccount: string;
+  workingAccount: string;
+  unlinkedAccount: string;
+};
 
 export default function CategoryDetailClient({ category }: { category: Category }) {
   const router = useRouter();
@@ -60,6 +69,41 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [accountType, setAccountType] = useState<AccountType>("asset");
   const [subcategoryName, setSubcategoryName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  
+  // M-Pesa integration states
+  const [mpesaIntegration, setMpesaIntegration] = useState<MpesaIntegration | null>(null);
+  const [loadingMpesa, setLoadingMpesa] = useState(false);
+  const [businessShortCode, setBusinessShortCode] = useState("");
+  const [paybillName, setPaybillName] = useState("");
+  const [shouldCreateAccounts, setShouldCreateAccounts] = useState(true);
+  const [utilityAccountId, setUtilityAccountId] = useState("");
+  const [workingAccountId, setWorkingAccountId] = useState("");
+  const [unlinkedAccountId, setUnlinkedAccountId] = useState("");
+
+  // Function to load M-Pesa integration
+  const loadMpesaIntegration = async () => {
+    setLoadingMpesa(true);
+    try {
+      const res = await fetch(`/api/settings/mpesa?categoryId=${encodeURIComponent(category.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.integrations && data.integrations.length > 0) {
+          setMpesaIntegration(data.integrations[0]);
+        } else {
+          setMpesaIntegration(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load M-Pesa integration:", err);
+    } finally {
+      setLoadingMpesa(false);
+    }
+  };
+
+  // Load M-Pesa integration on mount
+  useEffect(() => {
+    void loadMpesaIntegration();
+  }, [category.id]);
 
   function openModal(type: ModalType, categoryId: string) {
     setModalType(type);
@@ -326,6 +370,48 @@ export default function CategoryDetailClient({ category }: { category: Category 
         </div>
       )}
 
+      {/* M-Pesa Integration Section */}
+      <div className="panel">
+        <div className="panel-header">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+            <div>
+              <div className="panel-title">M-Pesa Integration</div>
+              <div className="panel-subtitle">Configure M-Pesa paybill for this category</div>
+            </div>
+            <button
+              type="button"
+              className="button"
+              onClick={() => openModal("mpesa", category.id)}
+              style={{ padding: "8px 16px" }}
+            >
+              {mpesaIntegration ? "Update Config" : "Add M-Pesa Config"}
+            </button>
+          </div>
+        </div>
+        {loadingMpesa ? (
+          <div className="txn-row">
+            <div className="txn-left">
+              <div className="txn-meta">Loading M-Pesa configuration...</div>
+            </div>
+          </div>
+        ) : mpesaIntegration ? (
+          <div className="txn-list">
+            <div className="txn-row">
+              <div className="txn-left">
+                <div className="txn-name">{mpesaIntegration.paybillName}</div>
+                <div className="txn-meta">Business Short Code: {mpesaIntegration.businessShortCode}</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="txn-row">
+            <div className="txn-left">
+              <div className="txn-meta">No M-Pesa configuration set up yet</div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="panel">
         <div className="panel-header">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
@@ -499,6 +585,221 @@ export default function CategoryDetailClient({ category }: { category: Category 
                   disabled={isBusy || !accountName.trim()}
                 >
                   {isBusy ? "Adding…" : "Add Account"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for M-Pesa Configuration */}
+      {modalType === "mpesa" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            overflowY: "auto",
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "600px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)", maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Configure M-Pesa Integration</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Paybill Name
+                </label>
+                <input
+                  className="setup-input"
+                  value={paybillName}
+                  onChange={(e) => setPaybillName(e.target.value)}
+                  placeholder="e.g., My Business Paybill"
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Business Short Code
+                </label>
+                <input
+                  className="setup-input"
+                  value={businessShortCode}
+                  onChange={(e) => setBusinessShortCode(e.target.value)}
+                  placeholder="e.g., 123456"
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "20px", padding: "16px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px" }}>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={shouldCreateAccounts}
+                      onChange={(e) => setShouldCreateAccounts(e.target.checked)}
+                      disabled={isBusy}
+                      style={{ marginRight: "8px" }}
+                    />
+                    <span style={{ fontSize: "14px", fontWeight: 500 }}>
+                      Automatically create M-Pesa accounts
+                    </span>
+                  </label>
+                  <div style={{ marginTop: "4px", marginLeft: "24px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                    Creates three accounts: Utility, Working, and Unlinked
+                  </div>
+                </div>
+              </div>
+
+              {!shouldCreateAccounts && (
+                <div style={{ marginBottom: "16px" }}>
+                  <div style={{ marginBottom: "12px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px", fontSize: "13px" }}>
+                    Select existing accounts for M-Pesa integration. All three accounts are required.
+                  </div>
+
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Utility Account
+                    </label>
+                    <select
+                      className="setup-input"
+                      value={utilityAccountId}
+                      onChange={(e) => setUtilityAccountId(e.target.value)}
+                      disabled={isBusy}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Select an account</option>
+                      {category.accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Working Account
+                    </label>
+                    <select
+                      className="setup-input"
+                      value={workingAccountId}
+                      onChange={(e) => setWorkingAccountId(e.target.value)}
+                      disabled={isBusy}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Select an account</option>
+                      {category.accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Unlinked Account
+                    </label>
+                    <select
+                      className="setup-input"
+                      value={unlinkedAccountId}
+                      onChange={(e) => setUnlinkedAccountId(e.target.value)}
+                      disabled={isBusy}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Select an account</option>
+                      {category.accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-error, #ffebee)", borderRadius: "8px", fontSize: "14px", color: "var(--text-error, #c62828)" }}>
+                  {error}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={async () => {
+                    if (!modalCategoryId || !businessShortCode.trim() || !paybillName.trim()) {
+                      setError("Please fill in all required fields");
+                      return;
+                    }
+
+                    if (!shouldCreateAccounts && (!utilityAccountId || !workingAccountId || !unlinkedAccountId)) {
+                      setError("Please select all three accounts");
+                      return;
+                    }
+
+                    setError(null);
+                    setIsBusy(true);
+
+                    try {
+                      const body = {
+                        categoryId: modalCategoryId,
+                        businessShortCode: businessShortCode.trim(),
+                        paybillName: paybillName.trim(),
+                        createAccounts: shouldCreateAccounts,
+                        ...(shouldCreateAccounts ? {} : {
+                          utilityAccountId,
+                          workingAccountId,
+                          unlinkedAccountId,
+                        }),
+                      };
+
+                      const res = await fetch("/api/settings/mpesa", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(body),
+                      });
+
+                      const data = await res.json().catch(() => null);
+                      if (!res.ok) {
+                        setError((data && (data.error || data.details)) || "Failed to configure M-Pesa integration");
+                        return;
+                      }
+
+                      closeModal();
+                      // Reload M-Pesa integration immediately
+                      await loadMpesaIntegration();
+                      router.refresh();
+                    } catch {
+                      setError("Failed to configure M-Pesa integration");
+                    } finally {
+                      setIsBusy(false);
+                    }
+                  }}
+                  disabled={isBusy || !businessShortCode.trim() || !paybillName.trim()}
+                >
+                  {isBusy ? "Configuring…" : "Configure M-Pesa"}
                 </button>
               </div>
             </div>
