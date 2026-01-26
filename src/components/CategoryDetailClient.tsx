@@ -22,6 +22,8 @@ type MpesaIntegration = {
   id: string;
   businessShortCode: string;
   paybillName: string;
+  initiatorName?: string;
+  hasSecurityCredential?: boolean;
   utilityAccount: string;
   workingAccount: string;
   unlinkedAccount: string;
@@ -46,6 +48,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [loadingMpesa, setLoadingMpesa] = useState(false);
   const [businessShortCode, setBusinessShortCode] = useState("");
   const [paybillName, setPaybillName] = useState("");
+  const [initiatorName, setInitiatorName] = useState("");
+  const [securityCredential, setSecurityCredential] = useState("");
   const [shouldCreateAccounts, setShouldCreateAccounts] = useState(true);
   const [utilityAccountId, setUtilityAccountId] = useState("");
   const [workingAccountId, setWorkingAccountId] = useState("");
@@ -122,6 +126,30 @@ export default function CategoryDetailClient({ category }: { category: Category 
     setAccountName("");
     setAccountType("asset");
     setSubcategoryName("");
+    
+    // If opening M-Pesa modal and integration exists, pre-fill the form
+    if (type === "mpesa" && mpesaIntegration) {
+      setBusinessShortCode(mpesaIntegration.businessShortCode || "");
+      setPaybillName(mpesaIntegration.paybillName || "");
+      // Pre-fill initiatorName (returned from API)
+      setInitiatorName(mpesaIntegration.initiatorName || "");
+      // Security credential: show placeholder if exists, empty if new
+      setSecurityCredential(mpesaIntegration.hasSecurityCredential ? "••••••••" : "");
+      setShouldCreateAccounts(false); // When editing, don't create new accounts
+      setUtilityAccountId(mpesaIntegration.utilityAccount || "");
+      setWorkingAccountId(mpesaIntegration.workingAccount || "");
+      setUnlinkedAccountId(mpesaIntegration.unlinkedAccount || "");
+    } else {
+      setBusinessShortCode("");
+      setPaybillName("");
+      setInitiatorName("");
+      setSecurityCredential("");
+      setShouldCreateAccounts(true);
+      setUtilityAccountId("");
+      setWorkingAccountId("");
+      setUnlinkedAccountId("");
+    }
+    
     setError(null);
     setShowDropdown(null);
   }
@@ -760,7 +788,7 @@ export default function CategoryDetailClient({ category }: { category: Category 
             onClick={(e) => e.stopPropagation()}
           >
             <div className="panel-header">
-              <div className="panel-title">Configure M-Pesa Integration</div>
+              <div className="panel-title">{mpesaIntegration ? "Edit M-Pesa Integration" : "Configure M-Pesa Integration"}</div>
             </div>
             <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
               <div style={{ marginBottom: "16px" }}>
@@ -779,7 +807,7 @@ export default function CategoryDetailClient({ category }: { category: Category 
 
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-                  Business Short Code
+                  Business Short Code *
                 </label>
                 <input
                   className="setup-input"
@@ -791,27 +819,65 @@ export default function CategoryDetailClient({ category }: { category: Category 
                 />
               </div>
 
-              <div style={{ marginBottom: "20px", padding: "16px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px" }}>
-                <div style={{ marginBottom: "12px" }}>
-                  <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={shouldCreateAccounts}
-                      onChange={(e) => setShouldCreateAccounts(e.target.checked)}
-                      disabled={isBusy}
-                      style={{ marginRight: "8px" }}
-                    />
-                    <span style={{ fontSize: "14px", fontWeight: 500 }}>
-                      Automatically create M-Pesa accounts
-                    </span>
-                  </label>
-                  <div style={{ marginTop: "4px", marginLeft: "24px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                    Creates three accounts: Utility, Working, and Unlinked
-                  </div>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Initiator Name *
+                </label>
+                <input
+                  className="setup-input"
+                  value={initiatorName}
+                  onChange={(e) => setInitiatorName(e.target.value)}
+                  placeholder="e.g., apiuser"
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  The name of the initiator to initiate the transaction
                 </div>
               </div>
 
-              {!shouldCreateAccounts && (
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Security Credential *
+                </label>
+                <input
+                  className="setup-input"
+                  type="password"
+                  value={securityCredential}
+                  onChange={(e) => setSecurityCredential(e.target.value)}
+                  placeholder="Enter security credential"
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  Base64 encoded security credential from M-Pesa portal
+                </div>
+              </div>
+
+              {/* Only show account creation option when creating new integration */}
+              {!mpesaIntegration && (
+                <div style={{ marginBottom: "20px", padding: "16px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px" }}>
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={shouldCreateAccounts}
+                        onChange={(e) => setShouldCreateAccounts(e.target.checked)}
+                        disabled={isBusy}
+                        style={{ marginRight: "8px" }}
+                      />
+                      <span style={{ fontSize: "14px", fontWeight: 500 }}>
+                        Automatically create M-Pesa accounts
+                      </span>
+                    </label>
+                    <div style={{ marginTop: "4px", marginLeft: "24px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                      Creates three accounts: Utility, Working, and Unlinked
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(!shouldCreateAccounts || mpesaIntegration) && (
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ marginBottom: "12px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px", fontSize: "13px" }}>
                     Select existing accounts for M-Pesa integration. All three accounts are required.
@@ -893,8 +959,16 @@ export default function CategoryDetailClient({ category }: { category: Category 
                   type="button"
                   className="button"
                   onClick={async () => {
-                    if (!modalCategoryId || !businessShortCode.trim() || !paybillName.trim()) {
-                      setError("Please fill in all required fields");
+                    // Check if security credential is placeholder (unchanged)
+                    const isPlaceholder = securityCredential === "••••••••";
+                    
+                    if (!modalCategoryId || !businessShortCode.trim() || !paybillName.trim() || !initiatorName.trim()) {
+                      setError("Please fill in all required fields (Business Short Code, Paybill Name, Initiator Name)");
+                      return;
+                    }
+                    
+                    if (!isPlaceholder && !securityCredential.trim()) {
+                      setError("Security Credential is required");
                       return;
                     }
 
@@ -911,6 +985,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
                         categoryId: modalCategoryId,
                         businessShortCode: businessShortCode.trim(),
                         paybillName: paybillName.trim(),
+                        initiatorName: initiatorName.trim(),
+                        securityCredential: securityCredential.trim(),
                         createAccounts: shouldCreateAccounts,
                         ...(shouldCreateAccounts ? {} : {
                           utilityAccountId,

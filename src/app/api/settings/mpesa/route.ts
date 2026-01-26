@@ -11,6 +11,8 @@ type MpesaIntegrationRecord = {
   id: unknown;
   business_short_code?: unknown;
   paybill_name?: unknown;
+  initiator_name?: unknown;
+  security_credential?: unknown;
   category_id?: unknown;
   utility_account?: unknown;
   working_account?: unknown;
@@ -61,6 +63,8 @@ export async function GET(request: NextRequest) {
       id: thingIdToString(integration.id),
       businessShortCode: typeof integration.business_short_code === "string" ? integration.business_short_code : "",
       paybillName: typeof integration.paybill_name === "string" ? integration.paybill_name : "",
+      initiatorName: typeof integration.initiator_name === "string" ? integration.initiator_name : "",
+      hasSecurityCredential: typeof integration.security_credential === "string" && integration.security_credential.length > 0,
       categoryId: thingIdToString(integration.category_id),
       utilityAccount: thingIdToString(integration.utility_account),
       workingAccount: thingIdToString(integration.working_account),
@@ -89,15 +93,17 @@ export async function POST(request: NextRequest) {
       categoryId,
       businessShortCode,
       paybillName,
+      initiatorName,
+      securityCredential,
       utilityAccountId,
       workingAccountId,
       unlinkedAccountId,
       createAccounts,
     } = body;
 
-    if (!categoryId || !businessShortCode || !paybillName) {
+    if (!categoryId || !businessShortCode || !paybillName || !initiatorName || !securityCredential) {
       return NextResponse.json(
-        { error: "Missing required fields: categoryId, businessShortCode, paybillName" },
+        { error: "Missing required fields: categoryId, businessShortCode, paybillName, initiatorName, securityCredential" },
         { status: 400 }
       );
     }
@@ -195,34 +201,84 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const query = `
-      CREATE mpesa_paybill_integration CONTENT {
-        business_short_code: ${JSON.stringify(businessShortCode)},
-        paybill_name: ${JSON.stringify(paybillName)},
-        category_id: ${categoryLiteral},
-        utility_account: ${utilityAccountLiteral},
-        working_account: ${workingAccountLiteral},
-        unlinked_account: ${unlinkedAccountLiteral}
-      };
-    `;
-
-    const result = await executeSurrealQL({
+    // Check if integration already exists for this category
+    const checkQuery = `SELECT * FROM mpesa_paybill_integration WHERE category_id = ${categoryLiteral};`;
+    
+    const checkResult = await executeSurrealQL({
       token,
-      query,
-      logName: "mpesa.POST /api/settings/mpesa (create integration)",
+      query: checkQuery,
+      logName: "mpesa.POST /api/settings/mpesa (check existing)",
     });
 
-    if (!result.success) {
+    if (!checkResult.success) {
       return NextResponse.json(
-        { error: "Failed to create M-Pesa integration", details: result.error },
+        { error: "Failed to check existing integration", details: checkResult.error },
         { status: 500 }
       );
     }
 
-    const created = getResultArray<MpesaIntegrationRecord>(result.data[0]);
-    if (!created.length) {
+    const existingIntegrations = getResultArray<MpesaIntegrationRecord>(checkResult.data[0]);
+    const existingIntegration = existingIntegrations.length > 0 ? existingIntegrations[0] : null;
+
+    let query: string;
+    let logName: string;
+
+    if (existingIntegration) {
+      // UPDATE existing integration
+      const existingId = thingIdToString(existingIntegration.id);
+      if (!existingId) {
+        return NextResponse.json(
+          { error: "Failed to parse existing integration ID" },
+          { status: 500 }
+        );
+      }
+      const existingLiteral = toSurrealThingLiteral(existingId);
+      
+      query = `
+        UPDATE ${existingLiteral} SET
+          business_short_code = ${JSON.stringify(businessShortCode)},
+          paybill_name = ${JSON.stringify(paybillName)},
+          initiator_name = ${JSON.stringify(initiatorName)},
+          security_credential = ${JSON.stringify(securityCredential)},
+          utility_account = ${utilityAccountLiteral},
+          working_account = ${workingAccountLiteral},
+          unlinked_account = ${unlinkedAccountLiteral};
+      `;
+      logName = "mpesa.POST /api/settings/mpesa (update integration)";
+    } else {
+      // CREATE new integration
+      query = `
+        CREATE mpesa_paybill_integration CONTENT {
+          business_short_code: ${JSON.stringify(businessShortCode)},
+          paybill_name: ${JSON.stringify(paybillName)},
+          initiator_name: ${JSON.stringify(initiatorName)},
+          security_credential: ${JSON.stringify(securityCredential)},
+          category_id: ${categoryLiteral},
+          utility_account: ${utilityAccountLiteral},
+          working_account: ${workingAccountLiteral},
+          unlinked_account: ${unlinkedAccountLiteral}
+        };
+      `;
+      logName = "mpesa.POST /api/settings/mpesa (create integration)";
+    }
+
+    const result = await executeSurrealQL({
+      token,
+      query,
+      logName,
+    });
+
+    if (!result.success) {
       return NextResponse.json(
-        { error: "Integration created but no data returned" },
+        { error: existingIntegration ? "Failed to update M-Pesa integration" : "Failed to create M-Pesa integration", details: result.error },
+        { status: 500 }
+      );
+    }
+
+    const resultData = getResultArray<MpesaIntegrationRecord>(result.data[0]);
+    if (!resultData.length) {
+      return NextResponse.json(
+        { error: "Integration operation completed but no data returned" },
         { status: 500 }
       );
     }
@@ -230,7 +286,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       integration: {
-        id: thingIdToString(created[0].id),
+        id: thingIdToString(resultData[0].id),
         businessShortCode,
         paybillName,
         categoryId,
