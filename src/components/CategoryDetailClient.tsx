@@ -1122,7 +1122,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
 
                       const data = await res.json().catch(() => null);
                       if (!res.ok) {
-                        setError((data && data.error) || "Failed to create link");
+                        const errorMessage = data?.details || data?.error || "Failed to create link";
+                        setError(errorMessage);
                         return;
                       }
 
