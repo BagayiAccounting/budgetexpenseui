@@ -22,10 +22,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { fromAccountId, toAccountId, amount, type, status, description, label } = body;
+    const { fromAccountId, toAccountId, amount, type, status, description, label, paymentChannel } = body;
 
-    if (!fromAccountId || !toAccountId || !amount || !type) {
+    // Validate required fields - toAccountId is optional if paymentChannel is provided
+    if (!fromAccountId || !amount || !type) {
       return NextResponse.json({ error: "Missing required fields", reason: "missing_fields" }, { status: 400 });
+    }
+
+    // Either toAccountId or paymentChannel must be provided
+    if (!toAccountId && !paymentChannel) {
+      return NextResponse.json({ error: "Either toAccountId or paymentChannel is required", reason: "missing_destination" }, { status: 400 });
     }
 
     if (amount <= 0) {
@@ -33,10 +39,16 @@ export async function POST(req: NextRequest) {
     }
 
     const fromLiteral = toSurrealThingLiteral(fromAccountId);
-    const toLiteral = toSurrealThingLiteral(toAccountId);
+    if (!fromLiteral) {
+      return NextResponse.json({ error: "Invalid fromAccountId", reason: "invalid_account_id" }, { status: 400 });
+    }
 
-    if (!fromLiteral || !toLiteral) {
-      return NextResponse.json({ error: "Invalid account ID", reason: "invalid_account_id" }, { status: 400 });
+    let toLiteral = null;
+    if (toAccountId) {
+      toLiteral = toSurrealThingLiteral(toAccountId);
+      if (!toLiteral) {
+        return NextResponse.json({ error: "Invalid toAccountId", reason: "invalid_account_id" }, { status: 400 });
+      }
     }
 
     // Get user ID for created_by field
@@ -68,13 +80,38 @@ export async function POST(req: NextRequest) {
 
     // Build the transfer creation query
     const transferStatus = status || "draft";
+    
+    // Build the content object
+    let contentFields = `from_account_id: ${fromLiteral}`;
+    
+    // Add to_account_id only if provided (not for payment channel transactions)
+    if (toLiteral) {
+      contentFields += `,\n  to_account_id: ${toLiteral}`;
+    }
+    
+    contentFields += `,\n  amount: ${amount}`;
+    contentFields += `,\n  type: ${JSON.stringify(type)}`;
+    contentFields += `,\n  status: ${JSON.stringify(transferStatus)}`;
+    contentFields += `,\n  created_by: ${userLiteral}`;
+    
+    if (description) {
+      contentFields += `,\n  description: ${JSON.stringify(description)}`;
+    }
+    
+    if (label) {
+      contentFields += `,\n  label: ${JSON.stringify(label)}`;
+    }
+    
+    // Add payment_channel if provided
+    if (paymentChannel) {
+      contentFields += `,\n  payment_channel: {
+    channel_id: ${JSON.stringify(paymentChannel.channelId)},
+    to_account: ${JSON.stringify(paymentChannel.toAccount)}
+  }`;
+    }
+    
     const query = `CREATE transfer CONTENT {
-  from_account_id: ${fromLiteral},
-  to_account_id: ${toLiteral},
-  amount: ${amount},
-  type: ${JSON.stringify(type)},
-  status: ${JSON.stringify(transferStatus)},
-  created_by: ${userLiteral}${description ? `,\n  description: ${JSON.stringify(description)}` : ""}${label ? `,\n  label: ${JSON.stringify(label)}` : ""}
+  ${contentFields}
 };`;
 
     const createResult = await executeSurrealQL({

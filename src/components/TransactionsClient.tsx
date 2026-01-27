@@ -78,6 +78,7 @@ export default function TransactionsClient({
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [showTransactionMenu, setShowTransactionMenu] = useState(false);
+  const [modalMode, setModalMode] = useState<"manual" | "buygoods">("manual");
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
@@ -85,6 +86,7 @@ export default function TransactionsClient({
   // Form states
   const [fromAccountId, setFromAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
+  const [buyGoodsNumber, setBuyGoodsNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [transferType, setTransferType] = useState<TransferType>("payment");
   const [description, setDescription] = useState("");
@@ -100,9 +102,11 @@ export default function TransactionsClient({
   }
 
   function openModal() {
+    setModalMode("manual");
     setShowModal(true);
     setFromAccountId("");
     setToAccountId("");
+    setBuyGoodsNumber("");
     setAmount("");
     setTransferType("payment");
     setDescription("");
@@ -161,6 +165,55 @@ export default function TransactionsClient({
       router.refresh();
     } catch {
       setError("Failed to create transfer");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleBuyGoodsPayment() {
+    if (!fromAccountId || !buyGoodsNumber.trim() || !amount) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setError("Amount must be a positive number");
+      return;
+    }
+
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromAccountId,
+          // No toAccountId for buy goods
+          amount: numAmount,
+          type: transferType,
+          status: submitDraft ? "submitted" : "draft",
+          description: description.trim() || undefined,
+          label: label.trim() || undefined,
+          paymentChannel: {
+            channelId: "BusinessBuyGoods",
+            toAccount: buyGoodsNumber.trim(),
+          },
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && (data.reason || data.error)) || "Failed to create buy goods payment");
+        return;
+      }
+
+      closeModal();
+      router.refresh();
+    } catch {
+      setError("Failed to create buy goods payment");
     } finally {
       setIsBusy(false);
     }
@@ -261,7 +314,16 @@ export default function TransactionsClient({
                 type="button"
                 onClick={() => {
                   setShowTransactionMenu(false);
-                  alert("Pay via Buy Goods - Coming Soon!");
+                  setModalMode("buygoods");
+                  setShowModal(true);
+                  setFromAccountId("");
+                  setBuyGoodsNumber("");
+                  setAmount("");
+                  setTransferType("payment");
+                  setDescription("");
+                  setLabel("");
+                  setSubmitDraft(true);
+                  setError(null);
                 }}
                 style={{
                   display: "block",
@@ -402,7 +464,7 @@ export default function TransactionsClient({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="panel-header">
-              <div className="panel-title">Add Transfer</div>
+              <div className="panel-title">{modalMode === "buygoods" ? "Pay via Buy Goods" : "Add Transfer"}</div>
             </div>
             <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
               {error && (
@@ -433,7 +495,7 @@ export default function TransactionsClient({
                 >
                   <option value="">Select account</option>
                   {accounts
-                    .filter((acc) => acc.id !== toAccountId)
+                    .filter((acc) => modalMode === "manual" ? acc.id !== toAccountId : true)
                     .map((acc) => (
                       <option key={acc.id} value={acc.id}>
                         {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
@@ -442,27 +504,54 @@ export default function TransactionsClient({
                 </select>
               </div>
 
-              <div style={{ marginBottom: "16px" }}>
-                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-                  To Account *
-                </label>
-                <select
-                  className="setup-input"
-                  value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
-                  disabled={isBusy}
-                  style={{ width: "100%" }}
-                >
-                  <option value="">Select account</option>
-                  {accounts
-                    .filter((acc) => acc.id !== fromAccountId)
-                    .map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
-                      </option>
-                    ))}
-                </select>
-              </div>
+              {modalMode === "manual" ? (
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                    To Account *
+                  </label>
+                  <select
+                    className="setup-input"
+                    value={toAccountId}
+                    onChange={(e) => setToAccountId(e.target.value)}
+                    disabled={isBusy}
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Select account</option>
+                    {accounts
+                      .filter((acc) => acc.id !== fromAccountId)
+                      .map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ) : (
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                    Buy Goods Till Number *
+                  </label>
+                  <input
+                    className="setup-input"
+                    type="text"
+                    value={buyGoodsNumber}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Only allow digits
+                      if (/^\d*$/.test(value)) {
+                        setBuyGoodsNumber(value);
+                      }
+                    }}
+                    placeholder="e.g., 123456"
+                    disabled={isBusy}
+                    maxLength={10}
+                    style={{ width: "100%" }}
+                  />
+                  <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                    Enter the merchant's till number
+                  </div>
+                </div>
+              )}
 
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
@@ -548,10 +637,24 @@ export default function TransactionsClient({
                 <button
                   type="button"
                   className="button"
-                  onClick={handleCreateTransfer}
-                  disabled={isBusy || !fromAccountId || !toAccountId || !amount}
+                  onClick={modalMode === "buygoods" ? handleBuyGoodsPayment : handleCreateTransfer}
+                  disabled={
+                    isBusy ||
+                    !fromAccountId ||
+                    !amount ||
+                    (modalMode === "manual" && !toAccountId) ||
+                    (modalMode === "buygoods" && !buyGoodsNumber.trim())
+                  }
                 >
-                  {isBusy ? "Creating…" : submitDraft ? "Submit Transfer" : "Save Draft"}
+                  {isBusy
+                    ? modalMode === "buygoods"
+                      ? "Processing…"
+                      : "Creating…"
+                    : submitDraft
+                      ? modalMode === "buygoods"
+                        ? "Submit Payment"
+                        : "Submit Transfer"
+                      : "Save Draft"}
                 </button>
               </div>
             </div>
