@@ -95,15 +95,17 @@ export async function POST(request: NextRequest) {
       paybillName,
       initiatorName,
       securityCredential,
+      consumerKey,
+      consumerSecret,
       utilityAccountId,
       workingAccountId,
       unlinkedAccountId,
       createAccounts,
     } = body;
 
-    if (!categoryId || !businessShortCode || !paybillName || !initiatorName || !securityCredential) {
+    if (!categoryId || !businessShortCode || !paybillName || !initiatorName || !securityCredential || !consumerKey || !consumerSecret) {
       return NextResponse.json(
-        { error: "Missing required fields: categoryId, businessShortCode, paybillName, initiatorName, securityCredential" },
+        { error: "Missing required fields: categoryId, businessShortCode, paybillName, initiatorName, securityCredential, consumerKey, consumerSecret" },
         { status: 400 }
       );
     }
@@ -240,6 +242,8 @@ export async function POST(request: NextRequest) {
           paybill_name = ${JSON.stringify(paybillName)},
           initiator_name = ${JSON.stringify(initiatorName)},
           security_credential = ${JSON.stringify(securityCredential)},
+          consumer_key = ${JSON.stringify(consumerKey)},
+          consumer_secret = ${JSON.stringify(consumerSecret)},
           utility_account = ${utilityAccountLiteral},
           working_account = ${workingAccountLiteral},
           unlinked_account = ${unlinkedAccountLiteral};
@@ -253,6 +257,8 @@ export async function POST(request: NextRequest) {
           paybill_name: ${JSON.stringify(paybillName)},
           initiator_name: ${JSON.stringify(initiatorName)},
           security_credential: ${JSON.stringify(securityCredential)},
+          consumer_key: ${JSON.stringify(consumerKey)},
+          consumer_secret: ${JSON.stringify(consumerSecret)},
           category_id: ${categoryLiteral},
           utility_account: ${utilityAccountLiteral},
           working_account: ${workingAccountLiteral},

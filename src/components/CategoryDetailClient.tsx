@@ -50,6 +50,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [paybillName, setPaybillName] = useState("");
   const [initiatorName, setInitiatorName] = useState("");
   const [securityCredential, setSecurityCredential] = useState("");
+  const [consumerKey, setConsumerKey] = useState("");
+  const [consumerSecret, setConsumerSecret] = useState("");
   const [shouldCreateAccounts, setShouldCreateAccounts] = useState(true);
   const [utilityAccountId, setUtilityAccountId] = useState("");
   const [workingAccountId, setWorkingAccountId] = useState("");
@@ -135,6 +137,9 @@ export default function CategoryDetailClient({ category }: { category: Category 
       setInitiatorName(mpesaIntegration.initiatorName || "");
       // Security credential: show placeholder if exists, empty if new
       setSecurityCredential(mpesaIntegration.hasSecurityCredential ? "••••••••" : "");
+      // Consumer credentials: show placeholder if editing (we assume they exist)
+      setConsumerKey("•••••••••••••");
+      setConsumerSecret("•••••••••••••");
       setShouldCreateAccounts(false); // When editing, don't create new accounts
       setUtilityAccountId(mpesaIntegration.utilityAccount || "");
       setWorkingAccountId(mpesaIntegration.workingAccount || "");
@@ -144,6 +149,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
       setPaybillName("");
       setInitiatorName("");
       setSecurityCredential("");
+      setConsumerKey("");
+      setConsumerSecret("");
       setShouldCreateAccounts(true);
       setUtilityAccountId("");
       setWorkingAccountId("");
@@ -854,6 +861,42 @@ export default function CategoryDetailClient({ category }: { category: Category 
                 </div>
               </div>
 
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Consumer Key *
+                </label>
+                <input
+                  className="setup-input"
+                  type="password"
+                  value={consumerKey}
+                  onChange={(e) => setConsumerKey(e.target.value)}
+                  placeholder="Enter consumer key"
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  Consumer key from M-Pesa Daraja portal
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Consumer Secret *
+                </label>
+                <input
+                  className="setup-input"
+                  type="password"
+                  value={consumerSecret}
+                  onChange={(e) => setConsumerSecret(e.target.value)}
+                  placeholder="Enter consumer secret"
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  Consumer secret from M-Pesa Daraja portal
+                </div>
+              </div>
+
               {/* Only show account creation option when creating new integration */}
               {!mpesaIntegration && (
                 <div style={{ marginBottom: "20px", padding: "16px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px" }}>
@@ -959,16 +1002,29 @@ export default function CategoryDetailClient({ category }: { category: Category 
                   type="button"
                   className="button"
                   onClick={async () => {
-                    // Check if security credential is placeholder (unchanged)
-                    const isPlaceholder = securityCredential === "••••••••";
+                    // Check if credentials are placeholders (unchanged)
+                    const isSecurityCredentialPlaceholder = securityCredential === "••••••••";
+                    const isConsumerKeyPlaceholder = consumerKey === "•••••••••••••";
+                    const isConsumerSecretPlaceholder = consumerSecret === "•••••••••••••";
                     
                     if (!modalCategoryId || !businessShortCode.trim() || !paybillName.trim() || !initiatorName.trim()) {
                       setError("Please fill in all required fields (Business Short Code, Paybill Name, Initiator Name)");
                       return;
                     }
                     
-                    if (!isPlaceholder && !securityCredential.trim()) {
+                    // Validate credentials - required if not placeholders
+                    if (!isSecurityCredentialPlaceholder && !securityCredential.trim()) {
                       setError("Security Credential is required");
+                      return;
+                    }
+                    
+                    if (!isConsumerKeyPlaceholder && !consumerKey.trim()) {
+                      setError("Consumer Key is required");
+                      return;
+                    }
+                    
+                    if (!isConsumerSecretPlaceholder && !consumerSecret.trim()) {
+                      setError("Consumer Secret is required");
                       return;
                     }
 
@@ -987,6 +1043,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
                         paybillName: paybillName.trim(),
                         initiatorName: initiatorName.trim(),
                         securityCredential: securityCredential.trim(),
+                        consumerKey: consumerKey.trim(),
+                        consumerSecret: consumerSecret.trim(),
                         createAccounts: shouldCreateAccounts,
                         ...(shouldCreateAccounts ? {} : {
                           utilityAccountId,
