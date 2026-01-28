@@ -78,7 +78,7 @@ export default function TransactionsClient({
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [showTransactionMenu, setShowTransactionMenu] = useState(false);
-  const [modalMode, setModalMode] = useState<"manual" | "buygoods">("manual");
+  const [modalMode, setModalMode] = useState<"manual" | "buygoods" | "sendmoney">("manual");
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
@@ -87,6 +87,7 @@ export default function TransactionsClient({
   const [fromAccountId, setFromAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
   const [buyGoodsNumber, setBuyGoodsNumber] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [transferType, setTransferType] = useState<TransferType>("payment");
   const [description, setDescription] = useState("");
@@ -219,6 +220,55 @@ export default function TransactionsClient({
     }
   }
 
+  async function handleSendMoney() {
+    if (!fromAccountId || !phoneNumber.trim() || !amount) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setError("Amount must be a positive number");
+      return;
+    }
+
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromAccountId,
+          // No toAccountId for send money
+          amount: numAmount,
+          type: transferType,
+          status: submitDraft ? "submitted" : "draft",
+          description: description.trim() || undefined,
+          label: label.trim() || undefined,
+          paymentChannel: {
+            channelId: "BusinessPayment",
+            toAccount: phoneNumber.trim(),
+          },
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && (data.reason || data.error)) || "Failed to create send money payment");
+        return;
+      }
+
+      closeModal();
+      router.refresh();
+    } catch {
+      setError("Failed to create send money payment");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   return (
     <div className="dashboard-page">
       <header className="dashboard-header">
@@ -291,7 +341,16 @@ export default function TransactionsClient({
                 type="button"
                 onClick={() => {
                   setShowTransactionMenu(false);
-                  alert("M-Pesa Send Money - Coming Soon!");
+                  setModalMode("sendmoney");
+                  setShowModal(true);
+                  setFromAccountId("");
+                  setPhoneNumber("");
+                  setAmount("");
+                  setTransferType("payment");
+                  setDescription("");
+                  setLabel("");
+                  setSubmitDraft(true);
+                  setError(null);
                 }}
                 style={{
                   display: "block",
@@ -464,7 +523,9 @@ export default function TransactionsClient({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="panel-header">
-              <div className="panel-title">{modalMode === "buygoods" ? "Pay via Buy Goods" : "Add Transfer"}</div>
+              <div className="panel-title">
+                {modalMode === "buygoods" ? "Pay via Buy Goods" : modalMode === "sendmoney" ? "M-Pesa Send Money" : "Add Transfer"}
+              </div>
             </div>
             <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
               {error && (
@@ -526,7 +587,7 @@ export default function TransactionsClient({
                       ))}
                   </select>
                 </div>
-              ) : (
+              ) : modalMode === "buygoods" ? (
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
                     Buy Goods Till Number *
@@ -548,7 +609,32 @@ export default function TransactionsClient({
                     style={{ width: "100%" }}
                   />
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                    Enter the merchant's till number
+                    Enter the merchant&apos;s till number
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                    Phone Number *
+                  </label>
+                  <input
+                    className="setup-input"
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Only allow digits and max 12 characters
+                      if (/^\d*$/.test(value)) {
+                        setPhoneNumber(value.slice(0, 12));
+                      }
+                    }}
+                    placeholder="e.g., 254712345678"
+                    disabled={isBusy}
+                    maxLength={12}
+                    style={{ width: "100%" }}
+                  />
+                  <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                    Enter recipient&apos;s phone number (include country code)
                   </div>
                 </div>
               )}
@@ -637,23 +723,34 @@ export default function TransactionsClient({
                 <button
                   type="button"
                   className="button"
-                  onClick={modalMode === "buygoods" ? handleBuyGoodsPayment : handleCreateTransfer}
+                  onClick={
+                    modalMode === "buygoods"
+                      ? handleBuyGoodsPayment
+                      : modalMode === "sendmoney"
+                        ? handleSendMoney
+                        : handleCreateTransfer
+                  }
                   disabled={
                     isBusy ||
                     !fromAccountId ||
                     !amount ||
                     (modalMode === "manual" && !toAccountId) ||
-                    (modalMode === "buygoods" && !buyGoodsNumber.trim())
+                    (modalMode === "buygoods" && !buyGoodsNumber.trim()) ||
+                    (modalMode === "sendmoney" && !phoneNumber.trim())
                   }
                 >
                   {isBusy
                     ? modalMode === "buygoods"
                       ? "Processing…"
-                      : "Creating…"
+                      : modalMode === "sendmoney"
+                        ? "Sending…"
+                        : "Creating…"
                     : submitDraft
                       ? modalMode === "buygoods"
                         ? "Submit Payment"
-                        : "Submit Transfer"
+                        : modalMode === "sendmoney"
+                          ? "Send Money"
+                          : "Submit Transfer"
                       : "Save Draft"}
                 </button>
               </div>
