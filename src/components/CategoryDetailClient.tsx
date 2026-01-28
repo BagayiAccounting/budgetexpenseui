@@ -27,6 +27,7 @@ type MpesaIntegration = {
   utilityAccount: string;
   workingAccount: string;
   unlinkedAccount: string;
+  b2cPaybill?: string;
 };
 
 export default function CategoryDetailClient({ category }: { category: Category }) {
@@ -52,6 +53,8 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [securityCredential, setSecurityCredential] = useState("");
   const [consumerKey, setConsumerKey] = useState("");
   const [consumerSecret, setConsumerSecret] = useState("");
+  const [b2cPaybillId, setB2cPaybillId] = useState("");
+  const [availablePaybills, setAvailablePaybills] = useState<Array<{ id: string; paybillName: string; businessShortCode: string }>>([]);
   const [shouldCreateAccounts, setShouldCreateAccounts] = useState(true);
   const [utilityAccountId, setUtilityAccountId] = useState("");
   const [workingAccountId, setWorkingAccountId] = useState("");
@@ -122,39 +125,57 @@ export default function CategoryDetailClient({ category }: { category: Category 
     void loadMpesaLink();
   }, [category.id]);
 
-  function openModal(type: ModalType, categoryId: string) {
+  async function openModal(type: ModalType, categoryId: string) {
     setModalType(type);
     setModalCategoryId(categoryId);
     setAccountName("");
     setAccountType("asset");
     setSubcategoryName("");
     
-    // If opening M-Pesa modal and integration exists, pre-fill the form
-    if (type === "mpesa" && mpesaIntegration) {
-      setBusinessShortCode(mpesaIntegration.businessShortCode || "");
-      setPaybillName(mpesaIntegration.paybillName || "");
-      // Pre-fill initiatorName (returned from API)
-      setInitiatorName(mpesaIntegration.initiatorName || "");
-      // Security credential: show placeholder if exists, empty if new
-      setSecurityCredential(mpesaIntegration.hasSecurityCredential ? "••••••••" : "");
-      // Consumer credentials: show placeholder if editing (we assume they exist)
-      setConsumerKey("•••••••••••••");
-      setConsumerSecret("•••••••••••••");
-      setShouldCreateAccounts(false); // When editing, don't create new accounts
-      setUtilityAccountId(mpesaIntegration.utilityAccount || "");
-      setWorkingAccountId(mpesaIntegration.workingAccount || "");
-      setUnlinkedAccountId(mpesaIntegration.unlinkedAccount || "");
-    } else {
-      setBusinessShortCode("");
-      setPaybillName("");
-      setInitiatorName("");
-      setSecurityCredential("");
-      setConsumerKey("");
-      setConsumerSecret("");
-      setShouldCreateAccounts(true);
-      setUtilityAccountId("");
-      setWorkingAccountId("");
-      setUnlinkedAccountId("");
+    // If opening M-Pesa modal, load all available paybills first
+    if (type === "mpesa") {
+      try {
+        const res = await fetch("/api/settings/mpesa?listAll=true");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.integrations) {
+            setAvailablePaybills(data.integrations);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load available paybills:", err);
+      }
+      
+      // If integration exists, pre-fill the form
+      if (mpesaIntegration) {
+        setBusinessShortCode(mpesaIntegration.businessShortCode || "");
+        setPaybillName(mpesaIntegration.paybillName || "");
+        // Pre-fill initiatorName (returned from API)
+        setInitiatorName(mpesaIntegration.initiatorName || "");
+        // Security credential: show placeholder if exists, empty if new
+        setSecurityCredential(mpesaIntegration.hasSecurityCredential ? "••••••••" : "");
+        // Consumer credentials: show placeholder if editing (we assume they exist)
+        setConsumerKey("•••••••••••••");
+        setConsumerSecret("•••••••••••••");
+        // B2C Paybill: pre-fill if exists
+        setB2cPaybillId(mpesaIntegration.b2cPaybill || "");
+        setShouldCreateAccounts(false); // When editing, don't create new accounts
+        setUtilityAccountId(mpesaIntegration.utilityAccount || "");
+        setWorkingAccountId(mpesaIntegration.workingAccount || "");
+        setUnlinkedAccountId(mpesaIntegration.unlinkedAccount || "");
+      } else {
+        setBusinessShortCode("");
+        setPaybillName("");
+        setInitiatorName("");
+        setSecurityCredential("");
+        setConsumerKey("");
+        setConsumerSecret("");
+        setB2cPaybillId("");
+        setShouldCreateAccounts(true);
+        setUtilityAccountId("");
+        setWorkingAccountId("");
+        setUnlinkedAccountId("");
+      }
     }
     
     setError(null);
@@ -897,6 +918,31 @@ export default function CategoryDetailClient({ category }: { category: Category 
                 </div>
               </div>
 
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  B2C Paybill (Optional)
+                </label>
+                <select
+                  className="setup-input"
+                  value={b2cPaybillId}
+                  onChange={(e) => setB2cPaybillId(e.target.value)}
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                >
+                  <option value="">None - Use this paybill for B2C</option>
+                  {availablePaybills
+                    .filter((p) => p.id !== mpesaIntegration?.id)
+                    .map((paybill) => (
+                      <option key={paybill.id} value={paybill.id}>
+                        {paybill.paybillName} ({paybill.businessShortCode})
+                      </option>
+                    ))}
+                </select>
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  Select a separate paybill for B2C transactions. Leave blank to use this paybill for all transactions.
+                </div>
+              </div>
+
               {/* Only show account creation option when creating new integration */}
               {!mpesaIntegration && (
                 <div style={{ marginBottom: "20px", padding: "16px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px" }}>
@@ -1045,6 +1091,7 @@ export default function CategoryDetailClient({ category }: { category: Category 
                         securityCredential: securityCredential.trim(),
                         consumerKey: consumerKey.trim(),
                         consumerSecret: consumerSecret.trim(),
+                        b2cPaybillId: b2cPaybillId || undefined,
                         createAccounts: shouldCreateAccounts,
                         ...(shouldCreateAccounts ? {} : {
                           utilityAccountId,

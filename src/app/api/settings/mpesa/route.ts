@@ -28,10 +28,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const categoryId = searchParams.get("categoryId");
-
-    if (!categoryId) {
-      return NextResponse.json({ error: "Missing categoryId" }, { status: 400 });
-    }
+    const listAll = searchParams.get("listAll");
 
     const audience = process.env.AUTH0_AUDIENCE || process.env.NEXT_PUBLIC_AUTH0_AUDIENCE;
     const scope = process.env.AUTH0_SCOPE;
@@ -40,12 +37,24 @@ export async function GET(request: NextRequest) {
       ...(scope ? { scope } : {}),
     });
 
-    const categoryLiteral = toSurrealThingLiteral(categoryId);
-    if (!categoryLiteral) {
-      return NextResponse.json({ error: "Invalid categoryId" }, { status: 400 });
-    }
+    let query: string;
 
-    const query = `SELECT * FROM mpesa_paybill_integration WHERE category_id = ${categoryLiteral};`;
+    if (listAll === "true") {
+      // Return all M-Pesa integrations (for dropdown selection)
+      query = `SELECT id, business_short_code, paybill_name FROM mpesa_paybill_integration;`;
+    } else {
+      // Return integration for specific category
+      if (!categoryId) {
+        return NextResponse.json({ error: "Missing categoryId" }, { status: 400 });
+      }
+
+      const categoryLiteral = toSurrealThingLiteral(categoryId);
+      if (!categoryLiteral) {
+        return NextResponse.json({ error: "Invalid categoryId" }, { status: 400 });
+      }
+
+      query = `SELECT * FROM mpesa_paybill_integration WHERE category_id = ${categoryLiteral};`;
+    }
 
     const result = await executeSurrealQL({
       token,
@@ -69,6 +78,7 @@ export async function GET(request: NextRequest) {
       utilityAccount: thingIdToString(integration.utility_account),
       workingAccount: thingIdToString(integration.working_account),
       unlinkedAccount: thingIdToString(integration.unlinked_account),
+      b2cPaybill: thingIdToString((integration as any).b2c_paybill),
     }));
 
     return NextResponse.json({ integrations: formatted });
@@ -97,6 +107,7 @@ export async function POST(request: NextRequest) {
       securityCredential,
       consumerKey,
       consumerSecret,
+      b2cPaybillId,
       utilityAccountId,
       workingAccountId,
       unlinkedAccountId,
@@ -222,6 +233,15 @@ export async function POST(request: NextRequest) {
     const existingIntegrations = getResultArray<MpesaIntegrationRecord>(checkResult.data[0]);
     const existingIntegration = existingIntegrations.length > 0 ? existingIntegrations[0] : null;
 
+    // Handle optional b2c_paybill reference
+    let b2cPaybillLiteral: string | null = null;
+    if (b2cPaybillId) {
+      b2cPaybillLiteral = toSurrealThingLiteral(b2cPaybillId);
+      if (!b2cPaybillLiteral) {
+        return NextResponse.json({ error: "Invalid b2cPaybillId" }, { status: 400 });
+      }
+    }
+
     let query: string;
     let logName: string;
 
@@ -236,17 +256,36 @@ export async function POST(request: NextRequest) {
       }
       const existingLiteral = toSurrealThingLiteral(existingId);
       
+      // Check if credentials are placeholders (unchanged)
+      const isSecurityCredentialPlaceholder = securityCredential === "••••••••";
+      const isConsumerKeyPlaceholder = consumerKey === "•••••••••••••";
+      const isConsumerSecretPlaceholder = consumerSecret === "•••••••••••••";
+      
+      // Build SET clause dynamically, only updating changed fields
+      const setFields = [];
+      setFields.push(`business_short_code = ${JSON.stringify(businessShortCode)}`);
+      setFields.push(`paybill_name = ${JSON.stringify(paybillName)}`);
+      setFields.push(`initiator_name = ${JSON.stringify(initiatorName)}`);
+      
+      // Only update credentials if they were changed (not placeholders)
+      if (!isSecurityCredentialPlaceholder) {
+        setFields.push(`security_credential = ${JSON.stringify(securityCredential)}`);
+      }
+      if (!isConsumerKeyPlaceholder) {
+        setFields.push(`consumer_key = ${JSON.stringify(consumerKey)}`);
+      }
+      if (!isConsumerSecretPlaceholder) {
+        setFields.push(`consumer_secret = ${JSON.stringify(consumerSecret)}`);
+      }
+      
+      setFields.push(`b2c_paybill = ${b2cPaybillLiteral || "NONE"}`);
+      setFields.push(`utility_account = ${utilityAccountLiteral}`);
+      setFields.push(`working_account = ${workingAccountLiteral}`);
+      setFields.push(`unlinked_account = ${unlinkedAccountLiteral}`);
+      
       query = `
         UPDATE ${existingLiteral} SET
-          business_short_code = ${JSON.stringify(businessShortCode)},
-          paybill_name = ${JSON.stringify(paybillName)},
-          initiator_name = ${JSON.stringify(initiatorName)},
-          security_credential = ${JSON.stringify(securityCredential)},
-          consumer_key = ${JSON.stringify(consumerKey)},
-          consumer_secret = ${JSON.stringify(consumerSecret)},
-          utility_account = ${utilityAccountLiteral},
-          working_account = ${workingAccountLiteral},
-          unlinked_account = ${unlinkedAccountLiteral};
+          ${setFields.join(',\n          ')};
       `;
       logName = "mpesa.POST /api/settings/mpesa (update integration)";
     } else {
@@ -259,6 +298,7 @@ export async function POST(request: NextRequest) {
           security_credential: ${JSON.stringify(securityCredential)},
           consumer_key: ${JSON.stringify(consumerKey)},
           consumer_secret: ${JSON.stringify(consumerSecret)},
+          ${b2cPaybillLiteral ? `b2c_paybill: ${b2cPaybillLiteral},` : ""}
           category_id: ${categoryLiteral},
           utility_account: ${utilityAccountLiteral},
           working_account: ${workingAccountLiteral},
