@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  budget-expense-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: budget-expense-ui:latest
+    container_name: budget-expense-ui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Node Environment
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      
+      # SurrealDB Configuration
+      # - SURREAL_BASE_URL=https://api.bagayi.com
+      
+      # Auth0 Configuration (override these with your production values)
+      - AUTH0_SECRET=wXWnllQyivcxEgwJMD1egyN5Hc13S09YGcBsPlELNDHXhYp8SgfiYN_beH6uITS4
+      - APP_BASE_URL=http://localhost:3000
+      - AUTH0_CLIENT_ID=WfZb4fuZTppm9jHKBRoXHZHG0yr5rGVR
+      - AUTH0_CLIENT_SECRET=wXWnllQyivcxEgwJMD1egyN5Hc13S09YGcBsPlELNDHXhYp8SgfiYN_beH6uITS4
+      - AUTH0_DOMAIN=dev-oxc2jdsgmlqm8r4w.uk.auth0.com
+      - AUTH0_AUDIENCE=budgetexpenseapp
+      - NEXT_PUBLIC_AUTH0_AUDIENCE=budgetexpenseapp
+      - HTTP_LOG=1
+      - HTTP_LOG_AUTH_TOKEN=full
+    
+    networks:
+      - app-network
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  app-network:
+    driver: bridge
