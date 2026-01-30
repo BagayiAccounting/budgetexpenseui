@@ -52,6 +52,8 @@ export type Account = {
   categoryName: string;
   categoryId: string;
   balance?: string;
+  isExternal?: boolean;
+  type?: string;
 };
 
 function asTbAccount(value: unknown): TbAccount | undefined {
@@ -146,7 +148,11 @@ export async function listAllAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  const query = "SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account;";
+  // Fetch accounts and also get the external_account global variable
+  const query = `
+    SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account;
+    RETURN $external_account;
+  `;
 
   const result = await executeSurrealQL({
     token: accessToken,
@@ -158,7 +164,11 @@ export async function listAllAccounts(options: {
     return { status: "skipped", reason: result.error };
   }
 
-  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(result.data[0]);
+  const accountsRaw = getResultArray<AccountRecord & { category_name?: string; external_account_id?: unknown }>(result.data[0]);
+  
+  // Get the external account ID from the global variable
+  const externalAccountResult = result.data[1]?.result;
+  const externalAccountId = thingIdToString(externalAccountResult);
 
   const accounts: Account[] = accountsRaw
     .map((a) => {
@@ -168,8 +178,13 @@ export async function listAllAccounts(options: {
       const categoryId = thingIdToString(a.category_id) || "";
       const tbAccount = asTbAccount(a.tb_account);
       const balance = tbAccount?.book_balance;
+      const accountType = typeof a.type === "string" ? a.type : undefined;
+      
+      // Check if this account is the external account
+      const isExternal = externalAccountId ? id === externalAccountId : false;
+      
       if (!id) return null;
-      return { id, name, categoryName, categoryId, balance };
+      return { id, name, categoryName, categoryId, balance, isExternal, type: accountType };
     })
     .filter(Boolean) as Account[];
 

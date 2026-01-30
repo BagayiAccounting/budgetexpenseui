@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { fromAccountId, toAccountId, amount, type, status, description, label, paymentChannel } = body;
+    const { fromAccountId, toAccountId, amount, type, status, description, label, paymentChannel, createdAt, metadata } = body;
 
     // Validate required fields - toAccountId is optional if paymentChannel is provided
     if (!fromAccountId || !amount || !type) {
@@ -102,12 +102,26 @@ export async function POST(req: NextRequest) {
       contentFields += `,\n  label: ${JSON.stringify(label)}`;
     }
     
+    // Add created_at if provided (for backdating manual transactions)
+    if (createdAt) {
+      // Validate the date format
+      const date = new Date(createdAt);
+      if (!isNaN(date.getTime())) {
+        contentFields += `,\n  created_at: <datetime>${JSON.stringify(createdAt)}`;
+      }
+    }
+    
     // Add payment_channel if provided
     if (paymentChannel) {
       contentFields += `,\n  payment_channel: {
     channel_id: ${JSON.stringify(paymentChannel.channelId)},
     to_account: ${JSON.stringify(paymentChannel.toAccount)}
   }`;
+    }
+    
+    // Add metadata if provided (for external account transfers)
+    if (metadata && typeof metadata === "object" && Object.keys(metadata).length > 0) {
+      contentFields += `,\n  metadata: ${JSON.stringify(metadata)}`;
     }
     
     const query = `CREATE transfer CONTENT {

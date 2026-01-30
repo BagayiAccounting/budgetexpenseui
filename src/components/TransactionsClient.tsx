@@ -9,6 +9,19 @@ type Account = {
   categoryName: string;
   categoryId: string;
   balance?: string;
+  isExternal?: boolean;
+  type?: string;
+};
+
+type ExternalAccount = {
+  id: string;
+  name: string;
+  type?: string;
+};
+
+type MetadataEntry = {
+  key: string;
+  value: string;
 };
 
 type Category = {
@@ -92,7 +105,20 @@ export default function TransactionsClient({
   const [transferType, setTransferType] = useState<TransferType>("payment");
   const [description, setDescription] = useState("");
   const [label, setLabel] = useState("");
+  const [transactionDate, setTransactionDate] = useState("");
   const [submitDraft, setSubmitDraft] = useState(true);
+  
+  // External account metadata (for transfers to external accounts)
+  const [customMetadata, setCustomMetadata] = useState<MetadataEntry[]>([]);
+  
+  // External account details (user-editable)
+  const [externalAccountId, setExternalAccountId] = useState("");
+  const [externalAccountName, setExternalAccountName] = useState("");
+  const [externalAccountType, setExternalAccountType] = useState("");
+
+  // Check if selected destination account is external
+  const selectedToAccount = accounts.find((acc) => acc.id === toAccountId);
+  const isToAccountExternal = selectedToAccount?.isExternal ?? false;
 
   // Filter accounts by selected category
   const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
@@ -112,8 +138,27 @@ export default function TransactionsClient({
     setTransferType("payment");
     setDescription("");
     setLabel("");
+    setTransactionDate(new Date().toISOString().split("T")[0]); // Default to today
+    setCustomMetadata([]);
+    setExternalAccountId("");
+    setExternalAccountName("");
+    setExternalAccountType("");
     setSubmitDraft(true);
     setError(null);
+  }
+
+  function addMetadataEntry() {
+    setCustomMetadata([...customMetadata, { key: "", value: "" }]);
+  }
+
+  function updateMetadataEntry(index: number, field: "key" | "value", value: string) {
+    const updated = [...customMetadata];
+    updated[index][field] = value;
+    setCustomMetadata(updated);
+  }
+
+  function removeMetadataEntry(index: number) {
+    setCustomMetadata(customMetadata.filter((_, i) => i !== index));
   }
 
   function closeModal() {
@@ -142,6 +187,43 @@ export default function TransactionsClient({
     setIsBusy(true);
 
     try {
+      // Convert date to ISO string with time at midnight UTC if provided
+      let createdAt: string | undefined;
+      if (transactionDate) {
+        createdAt = new Date(transactionDate + "T00:00:00.000Z").toISOString();
+      }
+
+      // Build metadata object
+      let metadata: Record<string, unknown> | undefined;
+      
+      // Add user-entered external account info if any field is filled
+      const hasExternalAccountData = externalAccountId.trim() || externalAccountName.trim() || externalAccountType.trim();
+      if (hasExternalAccountData) {
+        metadata = {
+          external_account: {
+            id: externalAccountId.trim() || undefined,
+            name: externalAccountName.trim() || undefined,
+            type: externalAccountType.trim() || undefined,
+          },
+        };
+        // Remove undefined properties from external_account
+        const extAcc = metadata.external_account as Record<string, unknown>;
+        Object.keys(extAcc).forEach(key => {
+          if (extAcc[key] === undefined) delete extAcc[key];
+        });
+      }
+      
+      // Add custom metadata entries
+      if (customMetadata.length > 0) {
+        const validEntries = customMetadata.filter(entry => entry.key.trim() && entry.value.trim());
+        if (validEntries.length > 0) {
+          if (!metadata) metadata = {};
+          for (const entry of validEntries) {
+            metadata[entry.key.trim()] = entry.value.trim();
+          }
+        }
+      }
+
       const res = await fetch("/api/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,6 +235,8 @@ export default function TransactionsClient({
           status: submitDraft ? "submitted" : "draft",
           description: description.trim() || undefined,
           label: label.trim() || undefined,
+          createdAt,
+          metadata,
         }),
       });
 
@@ -702,6 +786,147 @@ export default function TransactionsClient({
                   style={{ width: "100%", minHeight: "80px", resize: "vertical" }}
                 />
               </div>
+
+              {modalMode === "manual" && (
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                    Transaction Date
+                  </label>
+                  <input
+                    className="setup-input"
+                    type="date"
+                    value={transactionDate}
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                    disabled={isBusy}
+                    style={{ width: "100%" }}
+                  />
+                  <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                    When did this transaction occur? Defaults to today.
+                  </div>
+                </div>
+              )}
+
+              {/* Additional Metadata Section - Show for all manual transactions */}
+              {modalMode === "manual" && (
+                <div
+                  style={{
+                    marginBottom: "16px",
+                    padding: "16px",
+                    backgroundColor: "var(--bg-secondary, #f9fafb)",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ marginBottom: "12px" }}>
+                    <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "4px" }}>
+                      📋 Additional Metadata
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                      Add details about the external recipient or any custom data for this transaction.
+                    </div>
+                  </div>
+
+                  {/* External Account Details - User Editable */}
+                  <div style={{ marginBottom: "16px" }}>
+                    <div style={{ fontSize: "13px", fontWeight: 500, marginBottom: "8px" }}>
+                      🏦 External Account Details (Optional)
+                    </div>
+                    <div style={{ marginBottom: "8px" }}>
+                      <input
+                        className="setup-input"
+                        type="text"
+                        value={externalAccountId}
+                        onChange={(e) => setExternalAccountId(e.target.value)}
+                        placeholder="External Account ID (e.g., bank account, vendor ID)"
+                        disabled={isBusy}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: "8px" }}>
+                      <input
+                        className="setup-input"
+                        type="text"
+                        value={externalAccountName}
+                        onChange={(e) => setExternalAccountName(e.target.value)}
+                        placeholder="External Account Name (e.g., vendor name)"
+                        disabled={isBusy}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                    <div>
+                      <input
+                        className="setup-input"
+                        type="text"
+                        value={externalAccountType}
+                        onChange={(e) => setExternalAccountType(e.target.value)}
+                        placeholder="External Account Type (e.g., bank, vendor, supplier)"
+                        disabled={isBusy}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom metadata entries */}
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 500, marginBottom: "8px" }}>
+                      Custom Fields (Optional)
+                    </div>
+                    {customMetadata.map((entry, index) => (
+                      <div key={index} style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                        <input
+                          className="setup-input"
+                          type="text"
+                          value={entry.key}
+                          onChange={(e) => updateMetadataEntry(index, "key", e.target.value)}
+                          placeholder="Key"
+                          disabled={isBusy}
+                          style={{ flex: 1 }}
+                        />
+                        <input
+                          className="setup-input"
+                          type="text"
+                          value={entry.value}
+                          onChange={(e) => updateMetadataEntry(index, "value", e.target.value)}
+                          placeholder="Value"
+                          disabled={isBusy}
+                          style={{ flex: 2 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMetadataEntry(index)}
+                          disabled={isBusy}
+                          style={{
+                            padding: "8px 12px",
+                            border: "1px solid var(--border)",
+                            borderRadius: "4px",
+                            backgroundColor: "transparent",
+                            cursor: "pointer",
+                            color: "#ef4444",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addMetadataEntry}
+                      disabled={isBusy}
+                      style={{
+                        padding: "8px 12px",
+                        border: "1px dashed var(--border)",
+                        borderRadius: "4px",
+                        backgroundColor: "transparent",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        width: "100%",
+                      }}
+                    >
+                      + Add Custom Field
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "flex", alignItems: "center", fontSize: "14px", cursor: "pointer" }}>
