@@ -36,28 +36,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid categoryId" }, { status: 400 });
     }
 
-    // Fetch category users with user details
-    const query = `
-      SELECT 
-        id,
-        category_id,
-        user_id,
-        user_id.name AS user_name,
-        user_id.email AS user_email,
-        role
+    // First, fetch category users (without user details due to access policy)
+    const categoryUsersQuery = `
+      SELECT id, category_id, user_id, role
       FROM category_user 
       WHERE category_id = ${categoryLiteral};
     `;
 
-    const result = await executeSurrealQL({
+    const categoryUsersResult = await executeSurrealQL({
       token,
-      query,
+      query: categoryUsersQuery,
       logName: "categoryUsersAPI.GET /sql (list category users)",
     });
 
-    if (!result.success) {
+    if (!categoryUsersResult.success) {
       return NextResponse.json(
-        { error: "Failed to fetch category users", details: result.error },
+        { error: "Failed to fetch category users", details: categoryUsersResult.error },
         { status: 500 }
       );
     }
@@ -66,19 +60,52 @@ export async function GET(req: NextRequest) {
       id?: unknown;
       category_id?: unknown;
       user_id?: unknown;
-      user_name?: unknown;
-      user_email?: unknown;
       role?: unknown;
-    }>(result.data[0]);
+    }>(categoryUsersResult.data[0]);
 
-    const categoryUsers = categoryUsersRaw.map((cu) => ({
-      id: thingIdToString(cu.id),
-      categoryId: thingIdToString(cu.category_id),
-      userId: thingIdToString(cu.user_id),
-      userName: typeof cu.user_name === "string" ? cu.user_name : undefined,
-      userEmail: typeof cu.user_email === "string" ? cu.user_email : undefined,
-      role: typeof cu.role === "string" ? cu.role : "viewer",
-    }));
+    // Get all user IDs to look up their emails
+    const userIds = categoryUsersRaw
+      .map((cu) => thingIdToString(cu.user_id))
+      .filter((id): id is string => !!id);
+
+    // Fetch user emails from the lookup table (accessible to everyone)
+    const userEmailMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const userIdsLiterals = userIds.map((id) => toSurrealThingLiteral(id)).filter(Boolean);
+      if (userIdsLiterals.length > 0) {
+        const lookupQuery = `SELECT user, email FROM user_email_lookup WHERE user IN [${userIdsLiterals.join(", ")}];`;
+        
+        const lookupResult = await executeSurrealQL({
+          token,
+          query: lookupQuery,
+          logName: "categoryUsersAPI.GET /sql (lookup user emails)",
+        });
+
+        if (lookupResult.success) {
+          const lookupData = getResultArray<{ user?: unknown; email?: unknown }>(lookupResult.data[0]);
+          for (const entry of lookupData) {
+            const userId = thingIdToString(entry.user);
+            const email = typeof entry.email === "string" ? entry.email : undefined;
+            if (userId && email) {
+              userEmailMap[userId] = email;
+            }
+          }
+        }
+      }
+    }
+
+    const categoryUsers = categoryUsersRaw.map((cu) => {
+      const userId = thingIdToString(cu.user_id);
+      const userEmail = userId ? userEmailMap[userId] : undefined;
+      return {
+        id: thingIdToString(cu.id),
+        categoryId: thingIdToString(cu.category_id),
+        userId,
+        userName: userEmail?.split("@")[0], // Use email prefix as display name
+        userEmail,
+        role: typeof cu.role === "string" ? cu.role : "viewer",
+      };
+    });
 
     return NextResponse.json({ categoryUsers });
   } catch (error) {
