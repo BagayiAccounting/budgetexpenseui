@@ -52,7 +52,6 @@ export type Account = {
   categoryName: string;
   categoryId: string;
   balance?: string;
-  isExternal?: boolean;
   type?: string;
 };
 
@@ -148,10 +147,11 @@ export async function listAllAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  // Fetch accounts and also get the external_account global variable
+  // Fetch all accounts and also fetch the external account details using $external_account
   const query = `
     SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account;
-    RETURN $external_account;
+    LET $ext_id = $external_account;
+    SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account WHERE id = $ext_id LIMIT 1;
   `;
 
   const result = await executeSurrealQL({
@@ -164,12 +164,13 @@ export async function listAllAccounts(options: {
     return { status: "skipped", reason: result.error };
   }
 
-  const accountsRaw = getResultArray<AccountRecord & { category_name?: string; external_account_id?: unknown }>(result.data[0]);
+  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(result.data[0]);
   
-  // Get the external account ID from the global variable
-  const externalAccountResult = result.data[1]?.result;
-  const externalAccountId = thingIdToString(externalAccountResult);
+  // Get the external account from the third query result (index 2, since index 1 is LET)
+  const externalAccountArr = getResultArray<AccountRecord & { category_name?: string }>(result.data[2]);
+  const externalAccountResult = externalAccountArr.length > 0 ? externalAccountArr[0] : null;
 
+  // Process regular accounts
   const accounts: Account[] = accountsRaw
     .map((a) => {
       const id = thingIdToString(a.id);
@@ -180,13 +181,34 @@ export async function listAllAccounts(options: {
       const balance = tbAccount?.book_balance;
       const accountType = typeof a.type === "string" ? a.type : undefined;
       
-      // Check if this account is the external account
-      const isExternal = externalAccountId ? id === externalAccountId : false;
-      
       if (!id) return null;
-      return { id, name, categoryName, categoryId, balance, isExternal, type: accountType };
+      return { id, name, categoryName, categoryId, balance, type: accountType };
     })
     .filter(Boolean) as Account[];
+
+  // Add external account if it exists and isn't already in the list
+  if (externalAccountResult && typeof externalAccountResult === "object") {
+    const ext = externalAccountResult as AccountRecord & { category_name?: string };
+    const extId = thingIdToString(ext.id);
+    
+    if (extId && !accounts.some(a => a.id === extId)) {
+      const extName = typeof ext.name === "string" ? ext.name : "External Account";
+      const extCategoryName = typeof ext.category_name === "string" ? ext.category_name : "(External)";
+      const extCategoryId = thingIdToString(ext.category_id) || "";
+      const extTbAccount = asTbAccount(ext.tb_account);
+      const extBalance = extTbAccount?.book_balance;
+      const extType = typeof ext.type === "string" ? ext.type : undefined;
+      
+      accounts.push({
+        id: extId,
+        name: extName,
+        categoryName: extCategoryName,
+        categoryId: extCategoryId,
+        balance: extBalance,
+        type: extType,
+      });
+    }
+  }
 
   return { status: "ok", accounts };
 }

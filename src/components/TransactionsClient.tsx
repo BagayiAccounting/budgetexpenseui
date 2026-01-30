@@ -9,13 +9,6 @@ type Account = {
   categoryName: string;
   categoryId: string;
   balance?: string;
-  isExternal?: boolean;
-  type?: string;
-};
-
-type ExternalAccount = {
-  id: string;
-  name: string;
   type?: string;
 };
 
@@ -115,10 +108,6 @@ export default function TransactionsClient({
   const [externalAccountId, setExternalAccountId] = useState("");
   const [externalAccountName, setExternalAccountName] = useState("");
   const [externalAccountType, setExternalAccountType] = useState("");
-
-  // Check if selected destination account is external
-  const selectedToAccount = accounts.find((acc) => acc.id === toAccountId);
-  const isToAccountExternal = selectedToAccount?.isExternal ?? false;
 
   // Filter accounts by selected category
   const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
@@ -603,15 +592,28 @@ export default function TransactionsClient({
         >
           <div
             className="panel"
-            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            style={{ 
+              width: "90%", 
+              maxWidth: "500px", 
+              maxHeight: "90vh",
+              margin: "20px", 
+              backgroundColor: "var(--bg-primary, #ffffff)",
+              display: "flex",
+              flexDirection: "column",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="panel-header">
+            <div className="panel-header" style={{ flexShrink: 0 }}>
               <div className="panel-title">
                 {modalMode === "buygoods" ? "Pay via Buy Goods" : modalMode === "sendmoney" ? "M-Pesa Send Money" : "Add Transfer"}
               </div>
             </div>
-            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+            <div style={{ 
+              padding: "20px", 
+              backgroundColor: "var(--bg-primary, #ffffff)",
+              overflowY: "auto",
+              flex: 1,
+            }}>
               {error && (
                 <div
                   style={{
