@@ -16,7 +16,16 @@ type Category = {
   subcategories: Category[];
 };
 
-type ModalType = "account" | "subcategory" | "mpesa" | "link-mpesa" | null;
+type ModalType = "account" | "subcategory" | "mpesa" | "link-mpesa" | "add-user" | null;
+
+type CategoryUser = {
+  id: string;
+  categoryId: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  role: string;
+};
 
 type MpesaIntegration = {
   id: string;
@@ -66,6 +75,12 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [mpesaLink, setMpesaLink] = useState<{ id: string; mpesaIntegrationId: string; linkId?: string } | null>(null);
   const [mpesaLinkId, setMpesaLinkId] = useState("");
   const [mpesaLinkDetails, setMpesaLinkDetails] = useState<{ paybillName: string; businessShortCode: string; linkId: string } | null>(null);
+
+  // Category users states
+  const [categoryUsers, setCategoryUsers] = useState<CategoryUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"viewer" | "editor" | "admin">("viewer");
 
   // Function to load M-Pesa integration
   const loadMpesaIntegration = async () => {
@@ -119,10 +134,99 @@ export default function CategoryDetailClient({ category }: { category: Category 
     }
   };
 
+  // Load category users
+  const loadCategoryUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await fetch(`/api/settings/category-users?categoryId=${encodeURIComponent(category.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCategoryUsers(data.categoryUsers || []);
+      }
+    } catch (err) {
+      console.error("Failed to load category users:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // Add user to category
+  const handleAddUser = async () => {
+    if (!newUserEmail.trim()) {
+      setError("Please enter a user email");
+      return;
+    }
+
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/settings/category-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId: category.id,
+          userEmail: newUserEmail.trim(),
+          role: newUserRole,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && data.error) || "Failed to add user");
+        return;
+      }
+
+      closeModal();
+      await loadCategoryUsers();
+    } catch {
+      setError("Failed to add user");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // Update user role
+  const handleUpdateUserRole = async (categoryUserId: string, newRole: string) => {
+    try {
+      const res = await fetch("/api/settings/category-users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryUserId, role: newRole }),
+      });
+
+      if (res.ok) {
+        await loadCategoryUsers();
+      }
+    } catch (err) {
+      console.error("Failed to update user role:", err);
+    }
+  };
+
+  // Remove user from category
+  const handleRemoveUser = async (categoryUserId: string) => {
+    if (!confirm("Are you sure you want to remove this user from the category?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/settings/category-users?categoryUserId=${encodeURIComponent(categoryUserId)}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        await loadCategoryUsers();
+      }
+    } catch (err) {
+      console.error("Failed to remove user:", err);
+    }
+  };
+
   // Load M-Pesa integration and link on mount
   useEffect(() => {
     void loadMpesaIntegration();
     void loadMpesaLink();
+    void loadCategoryUsers();
   }, [category.id]);
 
   async function openModal(type: ModalType, categoryId: string) {
@@ -517,6 +621,32 @@ export default function CategoryDetailClient({ category }: { category: Category 
                 >
                   {mpesaLink ? "Change M-Pesa Link" : "Link to M-Pesa Integration"}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHeaderMenu(false);
+                    setNewUserEmail("");
+                    setNewUserRole("viewer");
+                    openModal("add-user", category.id);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "12px 16px",
+                    textAlign: "left",
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    color: "#000000",
+                    fontWeight: 500,
+                    borderTop: "1px solid var(--border)",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  👥 Manage Users
+                </button>
               </div>
             )}
           </div>
@@ -611,6 +741,97 @@ export default function CategoryDetailClient({ category }: { category: Category 
           </div>
         </div>
       )}
+
+      {/* Category Users Section */}
+      <div className="panel">
+        <div className="panel-header">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+            <div>
+              <div className="panel-title">👥 Users</div>
+              <div className="panel-subtitle">
+                {loadingUsers ? "Loading..." : `${categoryUsers.length} user${categoryUsers.length !== 1 ? "s" : ""} assigned`}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => {
+                setNewUserEmail("");
+                setNewUserRole("viewer");
+                openModal("add-user", category.id);
+              }}
+              aria-label="Add user"
+              style={{ padding: "8px 12px" }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="txn-list">
+          {categoryUsers.length === 0 ? (
+            <div className="txn-row">
+              <div className="txn-left">
+                <div className="txn-name">No users assigned</div>
+                <div className="txn-meta">Click + to add users to this category</div>
+              </div>
+            </div>
+          ) : (
+            categoryUsers.map((cu) => (
+              <div key={cu.id} className="txn-row">
+                <div className="txn-left">
+                  <div className="txn-name">{cu.userName || cu.userEmail || "Unknown User"}</div>
+                  <div className="txn-meta">{cu.userEmail}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <select
+                    className="setup-input"
+                    value={cu.role}
+                    onChange={(e) => handleUpdateUserRole(cu.id, e.target.value)}
+                    style={{ padding: "4px 8px", fontSize: "12px", minWidth: "90px" }}
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="editor">Editor</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    onClick={() => handleRemoveUser(cu.id)}
+                    style={{ padding: "4px 8px", color: "var(--text-error, #c62828)" }}
+                    title="Remove user"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <div className="panel">
         <div className="panel-header">
@@ -1382,6 +1603,98 @@ export default function CategoryDetailClient({ category }: { category: Category 
                   disabled={isBusy || !subcategoryName.trim()}
                 >
                   {isBusy ? "Adding…" : "Add Sub-category"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for adding user to category */}
+      {modalType === "add-user" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Add User to Category</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  User Email *
+                </label>
+                <input
+                  className="setup-input"
+                  type="email"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="Enter user's email address"
+                  disabled={isBusy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddUser();
+                    }
+                  }}
+                  style={{ width: "100%" }}
+                  autoFocus
+                />
+                <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  The user must already have an account in the system
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Role *
+                </label>
+                <select
+                  className="setup-input"
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value as "viewer" | "editor" | "admin")}
+                  disabled={isBusy}
+                  style={{ width: "100%" }}
+                >
+                  <option value="viewer">Viewer - Can view category data</option>
+                  <option value="editor">Editor - Can view and edit data</option>
+                  <option value="admin">Admin - Full access including user management</option>
+                </select>
+              </div>
+
+              {error && (
+                <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-error, #ffebee)", borderRadius: "8px", fontSize: "14px", color: "var(--text-error, #c62828)" }}>
+                  {error}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={handleAddUser}
+                  disabled={isBusy || !newUserEmail.trim()}
+                >
+                  {isBusy ? "Adding…" : "Add User"}
                 </button>
               </div>
             </div>
