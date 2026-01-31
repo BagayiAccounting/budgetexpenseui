@@ -75,11 +75,13 @@ export default function TransactionsClient({
   categories,
   transfers,
   initialCategoryId,
+  externalAccountId,
 }: {
   accounts: Account[];
   categories: Category[];
   transfers: Transfer[];
   initialCategoryId: string | null;
+  externalAccountId?: string;
 }) {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
@@ -104,13 +106,19 @@ export default function TransactionsClient({
   // External account metadata (for transfers to external accounts)
   const [customMetadata, setCustomMetadata] = useState<MetadataEntry[]>([]);
   
-  // External account details (user-editable)
-  const [externalAccountId, setExternalAccountId] = useState("");
-  const [externalAccountName, setExternalAccountName] = useState("");
-  const [externalAccountType, setExternalAccountType] = useState("");
+  // External account details (user-editable for metadata)
+  const [extMetaId, setExtMetaId] = useState("");
+  const [extMetaName, setExtMetaName] = useState("");
+  const [extMetaType, setExtMetaType] = useState("");
+  const [externalTransactionId, setExternalTransactionId] = useState("");
+  
+  // Check if either from or to account is the external account
+  const isFromExternalAccount = externalAccountId ? fromAccountId === externalAccountId : false;
+  const isToExternalAccount = externalAccountId ? toAccountId === externalAccountId : false;
+  const involvesExternalAccount = isFromExternalAccount || isToExternalAccount;
 
-  // Filter accounts by selected category
-  const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
+  // Note: categoryAccounts can be used for category-specific filtering if needed
+  // const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
 
   function handleCategoryChange(categoryId: string) {
     setSelectedCategoryId(categoryId);
@@ -129,9 +137,10 @@ export default function TransactionsClient({
     setLabel("");
     setTransactionDate(new Date().toISOString().split("T")[0]); // Default to today
     setCustomMetadata([]);
-    setExternalAccountId("");
-    setExternalAccountName("");
-    setExternalAccountType("");
+    setExtMetaId("");
+    setExtMetaName("");
+    setExtMetaType("");
+    setExternalTransactionId("");
     setSubmitDraft(true);
     setError(null);
   }
@@ -172,6 +181,18 @@ export default function TransactionsClient({
       return;
     }
 
+    // Validate external account details if transfer involves external account
+    if (involvesExternalAccount) {
+      if (!extMetaId.trim() || !extMetaName.trim() || !extMetaType.trim()) {
+        setError("External account details (ID, Name, and Type) are required when transferring to/from an external account");
+        return;
+      }
+      if (!externalTransactionId.trim()) {
+        setError("External Transaction ID is required when transferring to/from an external account");
+        return;
+      }
+    }
+
     setError(null);
     setIsBusy(true);
 
@@ -186,13 +207,13 @@ export default function TransactionsClient({
       let metadata: Record<string, unknown> | undefined;
       
       // Add user-entered external account info if any field is filled
-      const hasExternalAccountData = externalAccountId.trim() || externalAccountName.trim() || externalAccountType.trim();
+      const hasExternalAccountData = extMetaId.trim() || extMetaName.trim() || extMetaType.trim();
       if (hasExternalAccountData) {
         metadata = {
           external_account: {
-            id: externalAccountId.trim() || undefined,
-            name: externalAccountName.trim() || undefined,
-            type: externalAccountType.trim() || undefined,
+            id: extMetaId.trim() || undefined,
+            name: extMetaName.trim() || undefined,
+            type: extMetaType.trim() || undefined,
           },
         };
         // Remove undefined properties from external_account
@@ -226,6 +247,7 @@ export default function TransactionsClient({
           label: label.trim() || undefined,
           createdAt,
           metadata,
+          externalTransactionId: involvesExternalAccount && externalTransactionId.trim() ? externalTransactionId.trim() : undefined,
         }),
       });
 
@@ -828,45 +850,80 @@ export default function TransactionsClient({
                     </div>
                   </div>
 
-                  {/* External Account Details - User Editable */}
-                  <div style={{ marginBottom: "16px" }}>
-                    <div style={{ fontSize: "13px", fontWeight: 500, marginBottom: "8px" }}>
-                      🏦 External Account Details (Optional)
+                  {/* External Account Details - Only show when involving external account */}
+                  {involvesExternalAccount && (
+                    <div style={{ marginBottom: "16px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 500, marginBottom: "8px" }}>
+                        🏦 External Account Details *
+                      </div>
+                      <div style={{ 
+                        marginBottom: "8px", 
+                        padding: "8px", 
+                        backgroundColor: "#fef3c7", 
+                        borderRadius: "4px",
+                        fontSize: "12px",
+                        color: "#92400e"
+                      }}>
+                        ⚠️ External account details are required when transferring to/from an external account.
+                      </div>
+                      <div style={{ marginBottom: "8px" }}>
+                        <input
+                          className="setup-input"
+                          type="text"
+                          value={externalTransactionId}
+                          onChange={(e) => setExternalTransactionId(e.target.value)}
+                          placeholder="External Transaction ID (e.g., receipt number, reference) *"
+                          disabled={isBusy}
+                          style={{ 
+                            width: "100%",
+                            borderColor: !externalTransactionId.trim() ? "#f59e0b" : undefined
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: "8px" }}>
+                        <input
+                          className="setup-input"
+                          type="text"
+                          value={extMetaId}
+                          onChange={(e) => setExtMetaId(e.target.value)}
+                          placeholder="External Account ID (e.g., bank account, vendor ID) *"
+                          disabled={isBusy}
+                          style={{ 
+                            width: "100%",
+                            borderColor: !extMetaId.trim() ? "#f59e0b" : undefined
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: "8px" }}>
+                        <input
+                          className="setup-input"
+                          type="text"
+                          value={extMetaName}
+                          onChange={(e) => setExtMetaName(e.target.value)}
+                          placeholder="External Account Name (e.g., vendor name) *"
+                          disabled={isBusy}
+                          style={{ 
+                            width: "100%",
+                            borderColor: !extMetaName.trim() ? "#f59e0b" : undefined
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <input
+                          className="setup-input"
+                          type="text"
+                          value={extMetaType}
+                          onChange={(e) => setExtMetaType(e.target.value)}
+                          placeholder="External Account Type (e.g., bank, vendor, supplier) *"
+                          disabled={isBusy}
+                          style={{ 
+                            width: "100%",
+                            borderColor: !extMetaType.trim() ? "#f59e0b" : undefined
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div style={{ marginBottom: "8px" }}>
-                      <input
-                        className="setup-input"
-                        type="text"
-                        value={externalAccountId}
-                        onChange={(e) => setExternalAccountId(e.target.value)}
-                        placeholder="External Account ID (e.g., bank account, vendor ID)"
-                        disabled={isBusy}
-                        style={{ width: "100%" }}
-                      />
-                    </div>
-                    <div style={{ marginBottom: "8px" }}>
-                      <input
-                        className="setup-input"
-                        type="text"
-                        value={externalAccountName}
-                        onChange={(e) => setExternalAccountName(e.target.value)}
-                        placeholder="External Account Name (e.g., vendor name)"
-                        disabled={isBusy}
-                        style={{ width: "100%" }}
-                      />
-                    </div>
-                    <div>
-                      <input
-                        className="setup-input"
-                        type="text"
-                        value={externalAccountType}
-                        onChange={(e) => setExternalAccountType(e.target.value)}
-                        placeholder="External Account Type (e.g., bank, vendor, supplier)"
-                        disabled={isBusy}
-                        style={{ width: "100%" }}
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {/* Custom metadata entries */}
                   <div>
@@ -962,6 +1019,7 @@ export default function TransactionsClient({
                     !fromAccountId ||
                     !amount ||
                     (modalMode === "manual" && !toAccountId) ||
+                    (modalMode === "manual" && involvesExternalAccount && (!externalTransactionId.trim() || !extMetaId.trim() || !extMetaName.trim() || !extMetaType.trim())) ||
                     (modalMode === "buygoods" && !buyGoodsNumber.trim()) ||
                     (modalMode === "sendmoney" && !phoneNumber.trim())
                   }

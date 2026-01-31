@@ -111,6 +111,7 @@ export default async function TransactionsPage({
   }
 
   const accounts = accountsData.status === "ok" ? accountsData.accounts : [];
+  const externalAccountId = accountsData.status === "ok" ? accountsData.externalAccountId : undefined;
 
   return (
     <TransactionsClient
@@ -118,6 +119,7 @@ export default async function TransactionsPage({
       categories={categoriesData}
       transfers={transfersData}
       initialCategoryId={categoryId || null}
+      externalAccountId={externalAccountId}
     />
   );
 }

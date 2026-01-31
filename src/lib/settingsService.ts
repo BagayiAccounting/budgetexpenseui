@@ -143,7 +143,7 @@ export async function listCategoriesWithAccounts(options: {
 
 export async function listAllAccounts(options: {
   accessToken: string | undefined;
-}): Promise<{ status: "ok"; accounts: Account[] } | { status: "skipped"; reason: string }> {
+}): Promise<{ status: "ok"; accounts: Account[]; externalAccountId?: string } | { status: "skipped"; reason: string }> {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
@@ -210,7 +210,10 @@ export async function listAllAccounts(options: {
     }
   }
 
-  return { status: "ok", accounts };
+  // Get external account ID
+  const externalAccountId = externalAccountResult ? thingIdToString(externalAccountResult.id) : undefined;
+
+  return { status: "ok", accounts, externalAccountId };
 }
 
 export async function createAccount(options: {
