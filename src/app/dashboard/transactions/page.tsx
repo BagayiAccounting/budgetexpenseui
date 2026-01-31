@@ -152,13 +152,20 @@ export default async function TransactionsPage({
 
             // Parse payment_channel if present
             const paymentChannelRaw = t.payment_channel as Record<string, unknown> | undefined;
+            
+            // Get to_account from payment_channel if available
+            const paymentChannelToAccount = paymentChannelRaw ? 
+              (paymentChannelRaw['to_account'] as string | undefined) : undefined;
+            
+            // Use payment channel to_account for display if available
+            const finalToDisplayName = paymentChannelToAccount || toDisplayName;
 
             return {
               id: thingIdToString(t.id) || "",
               fromAccountId: fromAccountId || "",
               toAccountId: toAccountId || undefined,
               fromAccountName: fromDisplayName,
-              toAccountName: toDisplayName,
+              toAccountName: finalToDisplayName,
               amount:
                 typeof t.amount === "number"
                   ? t.amount

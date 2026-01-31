@@ -733,7 +733,17 @@ export default function TransactionsClient({
                   <div style={{ padding: "0 16px", color: "var(--text-secondary, #666)" }}>→</div>
                   <div style={{ flex: 1, textAlign: "right" }}>
                     <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)", marginBottom: "4px" }}>To</div>
-                    <div style={{ fontWeight: 500 }}>{selectedTransfer.toAccountName}</div>
+                    <div style={{ fontWeight: 500 }}>
+                      {(() => {
+                        // Check if payment_channel has to_account
+                        const paymentChannel = selectedTransfer.paymentChannel;
+                        if (paymentChannel && typeof paymentChannel === 'object') {
+                          const toAccount = paymentChannel['to_account'] || paymentChannel['toAccount'];
+                          if (toAccount) return String(toAccount);
+                        }
+                        return selectedTransfer.toAccountName;
+                      })()}
+                    </div>
                   </div>
                 </div>
               </div>
