@@ -781,18 +781,21 @@ export default function TransactionsClient({
                 )}
                 
                 {selectedTransfer.paymentChannel && Object.keys(selectedTransfer.paymentChannel).length > 0 && (
-                  <div style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ padding: "8px 0", borderBottom: "1px solid var(--border)", overflow: "hidden" }}>
                     <div style={{ color: "var(--text-secondary, #666)", marginBottom: "4px" }}>Payment Channel</div>
-                    <pre style={{ 
-                      margin: 0, 
-                      fontSize: "12px", 
-                      backgroundColor: "var(--bg-secondary, #f9fafb)", 
-                      padding: "8px", 
-                      borderRadius: "4px",
-                      overflow: "auto"
-                    }}>
-                      {JSON.stringify(selectedTransfer.paymentChannel, null, 2)}
-                    </pre>
+                    <div style={{ overflow: "auto", maxWidth: "100%" }}>
+                      <pre style={{ 
+                        margin: 0, 
+                        fontSize: "12px", 
+                        backgroundColor: "var(--bg-secondary, #f9fafb)", 
+                        padding: "8px", 
+                        borderRadius: "4px",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word"
+                      }}>
+                        {JSON.stringify(selectedTransfer.paymentChannel, null, 2)}
+                      </pre>
+                    </div>
                   </div>
                 )}
                 
@@ -852,31 +855,35 @@ export default function TransactionsClient({
 
               {/* Metadata Section */}
               {selectedTransfer.metadata && Object.keys(selectedTransfer.metadata).length > 0 && (
-                <div style={{ marginTop: "20px" }}>
+                <div style={{ marginTop: "20px", overflow: "hidden" }}>
                   <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>Metadata</div>
                   <div style={{ 
                     padding: "12px", 
                     backgroundColor: "var(--bg-secondary, #f9fafb)", 
                     borderRadius: "8px",
                     fontSize: "13px",
+                    overflow: "hidden",
                   }}>
                     {Object.entries(selectedTransfer.metadata).map(([key, value]) => (
-                      <div key={key} style={{ marginBottom: "8px" }}>
+                      <div key={key} style={{ marginBottom: "8px", overflow: "hidden" }}>
                         <div style={{ color: "var(--text-secondary, #666)", fontSize: "12px", marginBottom: "2px" }}>
                           {key}
                         </div>
-                        <div style={{ wordBreak: "break-word" }}>
+                        <div style={{ wordBreak: "break-word", overflow: "hidden" }}>
                           {typeof value === "object" ? (
-                            <pre style={{ 
-                              margin: 0, 
-                              fontSize: "12px", 
-                              backgroundColor: "var(--bg-primary, #fff)", 
-                              padding: "8px", 
-                              borderRadius: "4px",
-                              overflow: "auto"
-                            }}>
-                              {JSON.stringify(value, null, 2)}
-                            </pre>
+                            <div style={{ overflow: "auto", maxWidth: "100%" }}>
+                              <pre style={{ 
+                                margin: 0, 
+                                fontSize: "12px", 
+                                backgroundColor: "var(--bg-primary, #fff)", 
+                                padding: "8px", 
+                                borderRadius: "4px",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word"
+                              }}>
+                                {JSON.stringify(value, null, 2)}
+                              </pre>
+                            </div>
                           ) : (
                             String(value)
                           )}
