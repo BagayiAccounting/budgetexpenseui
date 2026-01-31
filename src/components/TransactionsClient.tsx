@@ -565,7 +565,7 @@ export default function TransactionsClient({
               <div>Date</div>
               <div>From</div>
               <div>To</div>
-              <div>Label</div>
+              <div>Reference</div>
               <div>Status</div>
               <div className="table-amount">Amount</div>
             </div>
@@ -582,7 +582,9 @@ export default function TransactionsClient({
                 <div className="table-muted">{formatDate(transfer.createdAt)}</div>
                 <div>{transfer.fromAccountName}</div>
                 <div>{transfer.toAccountName}</div>
-                <div className="table-muted">{transfer.label || "-"}</div>
+                <div className="table-muted" style={{ fontFamily: transfer.externalTransactionId ? "monospace" : undefined, fontSize: transfer.externalTransactionId ? "12px" : undefined }}>
+                  {transfer.externalTransactionId || transfer.label || "-"}
+                </div>
                 <div>
                   <span
                     style={{
