@@ -375,7 +375,7 @@ export default function CategoryDetailClient({ category }: { category: Category 
             <div className="txn-meta">{a.id}</div>
           </div>
           {(() => {
-            const rows = rowsFromTbAccount(a.tbAccount, isDefault);
+            const rows = rowsFromTbAccount(a.tbAccount);
             if (!rows || rows.length === 0) return null;
             return (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>

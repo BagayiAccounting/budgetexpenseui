@@ -53,7 +53,6 @@ export type Account = {
   categoryId: string;
   balance?: string;
   type?: string;
-  isDefaultAccount?: boolean;
 };
 
 function asTbAccount(value: unknown): TbAccount | undefined {
@@ -72,7 +71,7 @@ export async function listCategoriesWithAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  const query = "SELECT * FROM category; SELECT *, fn::tb_account(tb_account_id) AS tb_account FROM account;";
+  const query = "SELECT * FROM category; SELECT *, fn::tb_account(id) AS tb_account FROM account;";
 
   const result = await executeSurrealQL({
     token: accessToken,
@@ -150,9 +149,9 @@ export async function listAllAccounts(options: {
 
   // Fetch all accounts and also fetch the external account details using $external_account
   const query = `
-    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(tb_account_id) AS tb_account FROM account;
+    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(id) AS tb_account FROM account;
     LET $ext_id = $external_account;
-    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(tb_account_id) AS tb_account FROM account WHERE id = $ext_id LIMIT 1;
+    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(id) AS tb_account FROM account WHERE id = $ext_id LIMIT 1;
   `;
 
   const result = await executeSurrealQL({
@@ -181,11 +180,8 @@ export async function listAllAccounts(options: {
       const tbAccount = asTbAccount(a.tb_account);
       const balance = tbAccount?.book_balance;
       const accountType = typeof a.type === "string" ? a.type : undefined;
-      const categoryDefaultAccountId = thingIdToString(a.category_default_account_id);
-      const isDefaultAccount = id && categoryDefaultAccountId ? id === categoryDefaultAccountId : false;
-      
       if (!id) return null;
-      return { id, name, categoryName, categoryId, balance, type: accountType, isDefaultAccount };
+      return { id, name, categoryName, categoryId, balance, type: accountType };
     })
     .filter(Boolean) as Account[];
 
@@ -201,9 +197,6 @@ export async function listAllAccounts(options: {
       const extTbAccount = asTbAccount(ext.tb_account);
       const extBalance = extTbAccount?.book_balance;
       const extType = typeof ext.type === "string" ? ext.type : undefined;
-      const extCategoryDefaultAccountId = thingIdToString(ext.category_default_account_id);
-      const extIsDefaultAccount = extId && extCategoryDefaultAccountId ? extId === extCategoryDefaultAccountId : false;
-      
       accounts.push({
         id: extId,
         name: extName,
@@ -211,7 +204,6 @@ export async function listAllAccounts(options: {
         categoryId: extCategoryId,
         balance: extBalance,
         type: extType,
-        isDefaultAccount: extIsDefaultAccount,
       });
     }
   }

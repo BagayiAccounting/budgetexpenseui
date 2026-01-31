@@ -18,33 +18,23 @@ export function toFiniteNumber(value: string | number | undefined): number | nul
 }
 
 export function rowsFromTbAccount(
-  tbAccount: TbAccount | undefined,
-  isDefaultAccount?: boolean
+  tbAccount: TbAccount | undefined
 ): Array<{ label: string; text: string; className?: string }> {
   if (!tbAccount) return [];
   const rows: Array<{ label: string; text: string; className?: string }> = [];
-
-  // For default accounts, flip the sign since they're liabilities from bank's perspective
-  const shouldFlipSign = isDefaultAccount === true;
 
   const book = toFiniteNumber(tbAccount.book_balance);
   const spendable = toFiniteNumber(tbAccount.spendable_balance);
   const projected = toFiniteNumber(tbAccount.projected_balance);
 
   if (book != null) {
-    // Don't flip if value is 0 (to avoid -0)
-    const displayValue = shouldFlipSign && book !== 0 ? -book : book;
-    rows.push({ label: "Book", text: formatNumber(displayValue), className: signClass(displayValue) });
+    rows.push({ label: "Book", text: formatNumber(book), className: signClass(book) });
   }
   if (spendable != null) {
-    // Don't flip if value is 0 (to avoid -0)
-    const displayValue = shouldFlipSign && spendable !== 0 ? -spendable : spendable;
-    rows.push({ label: "Spendable", text: formatNumber(displayValue), className: signClass(displayValue) });
+    rows.push({ label: "Spendable", text: formatNumber(spendable), className: signClass(spendable) });
   }
   if (projected != null) {
-    // Don't flip if value is 0 (to avoid -0)
-    const displayValue = shouldFlipSign && projected !== 0 ? -projected : projected;
-    rows.push({ label: "Projected", text: formatNumber(displayValue), className: signClass(displayValue) });
+    rows.push({ label: "Projected", text: formatNumber(projected), className: signClass(projected) });
   }
 
   return rows;

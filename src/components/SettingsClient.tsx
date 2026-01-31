@@ -138,7 +138,7 @@ export default function SettingsClient({ categories }: { categories: Category[] 
     const defaultAccount = cat.accounts.find(a => a.id === cat.defaultAccountId);
     if (!defaultAccount?.tbAccount) return "-";
     
-    const rows = rowsFromTbAccount(defaultAccount.tbAccount, true);
+    const rows = rowsFromTbAccount(defaultAccount.tbAccount);
     const bookRow = rows.find(r => r.label === "Book");
     return bookRow ? bookRow.text : "-";
   }
@@ -208,7 +208,7 @@ export default function SettingsClient({ categories }: { categories: Category[] 
             <div className="txn-meta">{a.id}</div>
           </div>
           {(() => {
-            const rows = rowsFromTbAccount(a.tbAccount, isDefault);
+            const rows = rowsFromTbAccount(a.tbAccount);
             if (!rows || rows.length === 0) return null;
             return (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>

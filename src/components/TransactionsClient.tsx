@@ -10,7 +10,6 @@ type Account = {
   categoryId: string;
   balance?: string;
   type?: string;
-  isDefaultAccount?: boolean;
 };
 
 type MetadataEntry = {
@@ -54,14 +53,11 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
-function formatBalance(balance?: string, flipSign?: boolean): string {
+function formatBalance(balance?: string): string {
   if (!balance) return "";
   try {
-    let num = parseFloat(balance);
+    const num = parseFloat(balance);
     if (isNaN(num)) return "";
-    // Flip sign for default accounts since they're liabilities from bank's perspective
-    // Don't flip if value is 0 (to avoid -0)
-    if (flipSign && num !== 0) num = -num;
     return formatNumber(num);
   } catch {
     return "";
@@ -1001,7 +997,7 @@ export default function TransactionsClient({
                         <option key={acc.id} value={acc.id}>
                           {isExternal 
                             ? acc.name 
-                            : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance, acc.isDefaultAccount)}` : ""}`
+                            : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
                           }
                         </option>
                       );
@@ -1030,7 +1026,7 @@ export default function TransactionsClient({
                           <option key={acc.id} value={acc.id}>
                             {isExternal 
                               ? acc.name 
-                              : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance, acc.isDefaultAccount)}` : ""}`
+                              : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
                             }
                           </option>
                         );
