@@ -660,7 +660,7 @@ export default function TransactionsClient({
                   value={fromAccountId}
                   onChange={(e) => setFromAccountId(e.target.value)}
                   disabled={isBusy}
-                  style={{ width: "100%" }}
+                  style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                 >
                   <option value="">Select account</option>
                   {accounts
@@ -683,7 +683,7 @@ export default function TransactionsClient({
                     value={toAccountId}
                     onChange={(e) => setToAccountId(e.target.value)}
                     disabled={isBusy}
-                    style={{ width: "100%" }}
+                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   >
                     <option value="">Select account</option>
                     {accounts
@@ -714,7 +714,7 @@ export default function TransactionsClient({
                     placeholder="e.g., 123456"
                     disabled={isBusy}
                     maxLength={10}
-                    style={{ width: "100%" }}
+                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   />
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
                     Enter the merchant&apos;s till number
@@ -739,7 +739,7 @@ export default function TransactionsClient({
                     placeholder="e.g., 254712345678"
                     disabled={isBusy}
                     maxLength={12}
-                    style={{ width: "100%" }}
+                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   />
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
                     Enter recipient&apos;s phone number (include country code)
@@ -759,7 +759,7 @@ export default function TransactionsClient({
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="Enter amount"
                   disabled={isBusy}
-                  style={{ width: "100%" }}
+                  style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   autoFocus
                 />
               </div>
@@ -773,7 +773,7 @@ export default function TransactionsClient({
                   value={transferType}
                   onChange={(e) => setTransferType(e.target.value as TransferType)}
                   disabled={isBusy}
-                  style={{ width: "100%" }}
+                  style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                 >
                   {TRANSFER_TYPES.map((type) => (
                     <option key={type} value={type}>
@@ -793,7 +793,7 @@ export default function TransactionsClient({
                   onChange={(e) => setLabel(e.target.value)}
                   placeholder="e.g., Rent, Groceries, Salary"
                   disabled={isBusy}
-                  style={{ width: "100%" }}
+                  style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                 />
               </div>
 
@@ -807,7 +807,7 @@ export default function TransactionsClient({
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Additional notes..."
                   disabled={isBusy}
-                  style={{ width: "100%", minHeight: "80px", resize: "vertical" }}
+                  style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", minHeight: "80px", resize: "vertical" }}
                 />
               </div>
 
@@ -822,7 +822,7 @@ export default function TransactionsClient({
                     value={transactionDate}
                     onChange={(e) => setTransactionDate(e.target.value)}
                     disabled={isBusy}
-                    style={{ width: "100%" }}
+                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   />
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
                     When did this transaction occur? Defaults to today.
@@ -872,13 +872,18 @@ export default function TransactionsClient({
                           type="text"
                           value={externalTransactionId}
                           onChange={(e) => setExternalTransactionId(e.target.value)}
-                          placeholder="External Transaction ID (e.g., receipt number, reference) *"
+                          placeholder="Transaction ID *"
                           disabled={isBusy}
                           style={{ 
                             width: "100%",
+                            maxWidth: "100%",
+                            boxSizing: "border-box",
                             borderColor: !externalTransactionId.trim() ? "#f59e0b" : undefined
                           }}
                         />
+                        <div style={{ marginTop: "2px", fontSize: "11px", color: "var(--text-secondary, #666)" }}>
+                          e.g., receipt number, bank reference
+                        </div>
                       </div>
                       <div style={{ marginBottom: "8px" }}>
                         <input
@@ -886,13 +891,18 @@ export default function TransactionsClient({
                           type="text"
                           value={extMetaId}
                           onChange={(e) => setExtMetaId(e.target.value)}
-                          placeholder="External Account ID (e.g., bank account, vendor ID) *"
+                          placeholder="Account ID *"
                           disabled={isBusy}
                           style={{ 
                             width: "100%",
+                            maxWidth: "100%",
+                            boxSizing: "border-box",
                             borderColor: !extMetaId.trim() ? "#f59e0b" : undefined
                           }}
                         />
+                        <div style={{ marginTop: "2px", fontSize: "11px", color: "var(--text-secondary, #666)" }}>
+                          e.g., bank account, vendor ID
+                        </div>
                       </div>
                       <div style={{ marginBottom: "8px" }}>
                         <input
@@ -900,13 +910,18 @@ export default function TransactionsClient({
                           type="text"
                           value={extMetaName}
                           onChange={(e) => setExtMetaName(e.target.value)}
-                          placeholder="External Account Name (e.g., vendor name) *"
+                          placeholder="Account Name *"
                           disabled={isBusy}
                           style={{ 
                             width: "100%",
+                            maxWidth: "100%",
+                            boxSizing: "border-box",
                             borderColor: !extMetaName.trim() ? "#f59e0b" : undefined
                           }}
                         />
+                        <div style={{ marginTop: "2px", fontSize: "11px", color: "var(--text-secondary, #666)" }}>
+                          e.g., vendor name, bank name
+                        </div>
                       </div>
                       <div>
                         <input
@@ -914,13 +929,18 @@ export default function TransactionsClient({
                           type="text"
                           value={extMetaType}
                           onChange={(e) => setExtMetaType(e.target.value)}
-                          placeholder="External Account Type (e.g., bank, vendor, supplier) *"
+                          placeholder="Account Type *"
                           disabled={isBusy}
                           style={{ 
                             width: "100%",
+                            maxWidth: "100%",
+                            boxSizing: "border-box",
                             borderColor: !extMetaType.trim() ? "#f59e0b" : undefined
                           }}
                         />
+                        <div style={{ marginTop: "2px", fontSize: "11px", color: "var(--text-secondary, #666)" }}>
+                          e.g., bank, vendor, supplier
+                        </div>
                       </div>
                     </div>
                   )}
