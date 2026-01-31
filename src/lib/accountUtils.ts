@@ -32,15 +32,18 @@ export function rowsFromTbAccount(
   const projected = toFiniteNumber(tbAccount.projected_balance);
 
   if (book != null) {
-    const displayValue = shouldFlipSign ? -book : book;
+    // Don't flip if value is 0 (to avoid -0)
+    const displayValue = shouldFlipSign && book !== 0 ? -book : book;
     rows.push({ label: "Book", text: formatNumber(displayValue), className: signClass(displayValue) });
   }
   if (spendable != null) {
-    const displayValue = shouldFlipSign ? -spendable : spendable;
+    // Don't flip if value is 0 (to avoid -0)
+    const displayValue = shouldFlipSign && spendable !== 0 ? -spendable : spendable;
     rows.push({ label: "Spendable", text: formatNumber(displayValue), className: signClass(displayValue) });
   }
   if (projected != null) {
-    const displayValue = shouldFlipSign ? -projected : projected;
+    // Don't flip if value is 0 (to avoid -0)
+    const displayValue = shouldFlipSign && projected !== 0 ? -projected : projected;
     rows.push({ label: "Projected", text: formatNumber(displayValue), className: signClass(displayValue) });
   }
 
