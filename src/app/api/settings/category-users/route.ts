@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
 
     const created = getResultArray<{ id?: unknown }>(createResult.data[0]);
     if (created.length === 0) {
-      return NextResponse.json({ error: "Failed to create category user entry" }, { status: 500 });
+      return NextResponse.json({ error: "Permission denied: You don't have permission to add users to this category" }, { status: 403 });
     }
 
     return NextResponse.json({ success: true, id: thingIdToString(created[0].id) });

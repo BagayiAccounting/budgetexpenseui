@@ -266,7 +266,7 @@ export async function createBudgetTemplate(options: {
 
   const created = getResultArray<{ id: unknown }>(result.data[0]);
   if (!created.length) {
-    return { status: "skipped", reason: "create_empty_result" };
+    return { status: "skipped", reason: "permission_denied_create_budget_template" };
   }
 
   const createdId = thingIdToString(created[0].id);
@@ -312,7 +312,7 @@ export async function createBudget(options: {
 
   const created = getResultArray<{ id: unknown }>(result.data[0]);
   if (!created.length) {
-    return { status: "skipped", reason: "create_empty_result" };
+    return { status: "skipped", reason: "permission_denied_create_budget" };
   }
 
   const createdId = thingIdToString(created[0].id);
@@ -448,7 +448,7 @@ export async function createBudgetAllocation(options: {
 
   const created = getResultArray<{ id: unknown }>(result.data[0]);
   if (!created.length) {
-    return { status: "skipped", reason: "create_empty_result" };
+    return { status: "skipped", reason: "permission_denied_create_budget_allocation" };
   }
 
   const createdId = thingIdToString(created[0].id);

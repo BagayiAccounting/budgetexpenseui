@@ -253,7 +253,7 @@ export async function createAccount(options: {
 
   const created = getResultArray<unknown>(result.data[0]);
   if (!created.length) {
-    return { status: "skipped", reason: "create_empty_result" };
+    return { status: "skipped", reason: "permission_denied_create_account" };
   }
 
   return { status: "created" };
@@ -286,7 +286,7 @@ export async function createCategory(options: {
   }
 
   const created = getResultArray<unknown>(result.data[0]);
-  if (!created.length) return { status: "skipped", reason: "create_category_empty_result" };
+  if (!created.length) return { status: "skipped", reason: "permission_denied_create_category" };
 
   return { status: "created" };
 }
@@ -322,7 +322,7 @@ export async function createSubCategory(options: {
   }
 
   const created = getResultArray<unknown>(result.data[0]);
-  if (!created.length) return { status: "skipped", reason: "create_category_empty_result" };
+  if (!created.length) return { status: "skipped", reason: "permission_denied_create_subcategory" };
 
   return { status: "created" };
 }

@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     const result = getResultArray(createResult.data[0])[0];
 
     if (!result) {
-      return NextResponse.json({ error: "No transfer created", reason: "empty_result" }, { status: 500 });
+      return NextResponse.json({ error: "Permission denied: You don't have permission to create this transfer", reason: "permission_denied_create_transfer" }, { status: 403 });
     }
 
     return NextResponse.json({ success: true, transfer: result });
