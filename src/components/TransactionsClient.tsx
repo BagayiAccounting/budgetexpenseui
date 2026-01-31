@@ -665,11 +665,17 @@ export default function TransactionsClient({
                   <option value="">Select account</option>
                   {accounts
                     .filter((acc) => modalMode === "manual" ? acc.id !== toAccountId : true)
-                    .map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
-                      </option>
-                    ))}
+                    .map((acc) => {
+                      const isExternal = externalAccountId && acc.id === externalAccountId;
+                      return (
+                        <option key={acc.id} value={acc.id}>
+                          {isExternal 
+                            ? acc.name 
+                            : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
+                          }
+                        </option>
+                      );
+                    })}
                 </select>
               </div>
 
@@ -688,11 +694,17 @@ export default function TransactionsClient({
                     <option value="">Select account</option>
                     {accounts
                       .filter((acc) => acc.id !== fromAccountId)
-                      .map((acc) => (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.name} ({acc.categoryName}){acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
-                        </option>
-                      ))}
+                      .map((acc) => {
+                        const isExternal = externalAccountId && acc.id === externalAccountId;
+                        return (
+                          <option key={acc.id} value={acc.id}>
+                            {isExternal 
+                              ? acc.name 
+                              : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
+                            }
+                          </option>
+                        );
+                      })}
                   </select>
                 </div>
               ) : modalMode === "buygoods" ? (

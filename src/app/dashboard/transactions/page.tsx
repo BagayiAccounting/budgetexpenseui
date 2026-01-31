@@ -64,13 +64,23 @@ export default async function TransactionsPage({
         .filter((c) => c.id);
     }
 
+    // Get the external account ID
+    const externalAccountIdForQuery = accountsData.status === "ok" ? accountsData.externalAccountId : undefined;
+
     // Fetch transfers for selected category
     const selectedCategoryId = categoryId || categoriesData[0]?.id;
     if (selectedCategoryId) {
       const transfersQuery = `
         SELECT *,
           from_account_id.name AS from_account_name,
-          to_account_id.name AS to_account_name
+          to_account_id.name AS to_account_name,
+          from_account_id.category_id.name AS from_category_name,
+          to_account_id.category_id.name AS to_category_name,
+          from_account_id.category_id.default_account_id AS from_category_default_account,
+          to_account_id.category_id.default_account_id AS to_category_default_account,
+          from_account_id AS from_account_ref,
+          to_account_id AS to_account_ref,
+          metadata
         FROM transfer
         WHERE from_account_id.category_id = ${selectedCategoryId}
            OR to_account_id.category_id = ${selectedCategoryId}
@@ -87,22 +97,62 @@ export default async function TransactionsPage({
       if (transfersResult.success) {
         const transfersRaw = getResultArray<Record<string, unknown>>(transfersResult.data[0]);
         transfersData = transfersRaw
-          .map((t) => ({
-            id: thingIdToString(t.id) || "",
-            fromAccountName: typeof t.from_account_name === "string" ? t.from_account_name : "(Unknown)",
-            toAccountName: typeof t.to_account_name === "string" ? t.to_account_name : "(Unknown)",
-            amount:
-              typeof t.amount === "number"
-                ? t.amount
-                : typeof t.amount === "string"
-                  ? parseFloat(t.amount)
-                  : 0,
-            type: typeof t.type === "string" ? t.type : "payment",
-            status: typeof t.status === "string" ? t.status : "draft",
-            label: typeof t.label === "string" ? t.label : undefined,
-            description: typeof t.description === "string" ? t.description : undefined,
-            createdAt: typeof t.created_at === "string" ? t.created_at : "",
-          }))
+          .map((t) => {
+            const fromAccountId = thingIdToString(t.from_account_ref);
+            const toAccountId = thingIdToString(t.to_account_ref);
+            const fromCategoryDefaultAccount = thingIdToString(t.from_category_default_account);
+            const toCategoryDefaultAccount = thingIdToString(t.to_category_default_account);
+            
+            // Get metadata for external account name
+            const metadata = t.metadata as Record<string, unknown> | undefined;
+            const externalAccountData = metadata?.external_account as Record<string, unknown> | undefined;
+            const externalAccountName = typeof externalAccountData?.name === "string" ? externalAccountData.name : null;
+            
+            // Check if account is external account
+            const isFromExternal = externalAccountIdForQuery && fromAccountId === externalAccountIdForQuery;
+            const isToExternal = externalAccountIdForQuery && toAccountId === externalAccountIdForQuery;
+            
+            // If account is the default account for its category, show category name
+            const isFromDefault = fromAccountId && fromCategoryDefaultAccount && fromAccountId === fromCategoryDefaultAccount;
+            const isToDefault = toAccountId && toCategoryDefaultAccount && toAccountId === toCategoryDefaultAccount;
+            
+            // Determine display name for "from" account
+            let fromDisplayName: string;
+            if (isFromExternal && externalAccountName) {
+              fromDisplayName = externalAccountName;
+            } else if (isFromDefault && typeof t.from_category_name === "string") {
+              fromDisplayName = t.from_category_name;
+            } else {
+              fromDisplayName = typeof t.from_account_name === "string" ? t.from_account_name : "(Unknown)";
+            }
+            
+            // Determine display name for "to" account
+            let toDisplayName: string;
+            if (isToExternal && externalAccountName) {
+              toDisplayName = externalAccountName;
+            } else if (isToDefault && typeof t.to_category_name === "string") {
+              toDisplayName = t.to_category_name;
+            } else {
+              toDisplayName = typeof t.to_account_name === "string" ? t.to_account_name : "(Unknown)";
+            }
+
+            return {
+              id: thingIdToString(t.id) || "",
+              fromAccountName: fromDisplayName,
+              toAccountName: toDisplayName,
+              amount:
+                typeof t.amount === "number"
+                  ? t.amount
+                  : typeof t.amount === "string"
+                    ? parseFloat(t.amount)
+                    : 0,
+              type: typeof t.type === "string" ? t.type : "payment",
+              status: typeof t.status === "string" ? t.status : "draft",
+              label: typeof t.label === "string" ? t.label : undefined,
+              description: typeof t.description === "string" ? t.description : undefined,
+              createdAt: typeof t.created_at === "string" ? t.created_at : "",
+            };
+          })
           .filter((t) => t.id);
       }
     }
