@@ -25,6 +25,8 @@ type Category = {
 
 type Transfer = {
   id: string;
+  fromAccountId: string;
+  toAccountId?: string;
   fromAccountName: string;
   toAccountName: string;
   amount: number;
@@ -33,12 +35,16 @@ type Transfer = {
   label?: string;
   description?: string;
   createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+  createdByName?: string;
   externalTransactionId?: string;
+  tbTransferId?: string;
+  parentTransferId?: string;
+  linkRole?: string;
+  paymentIntegrationLink?: string;
   metadata?: Record<string, unknown>;
-  paymentChannel?: {
-    channelId: string;
-    toAccount: string;
-  };
+  paymentChannel?: Record<string, unknown>;
 };
 
 const TRANSFER_TYPES = ["payment", "fees", "refund", "adjustment"] as const;
@@ -760,17 +766,67 @@ export default function TransactionsClient({
                   </div>
                 )}
                 
-                {selectedTransfer.paymentChannel && (
+                {selectedTransfer.createdByName && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>Created By</span>
+                    <span>{selectedTransfer.createdByName}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.updatedAt && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>Updated At</span>
+                    <span>{new Date(selectedTransfer.updatedAt).toLocaleString()}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.paymentChannel && Object.keys(selectedTransfer.paymentChannel).length > 0 && (
                   <div style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ color: "var(--text-secondary, #666)", marginBottom: "4px" }}>Payment Channel</div>
-                    <div>
-                      <span style={{ fontWeight: 500 }}>{selectedTransfer.paymentChannel.channelId}</span>
-                      {selectedTransfer.paymentChannel.toAccount && (
-                        <span style={{ marginLeft: "8px", fontFamily: "monospace" }}>
-                          ({selectedTransfer.paymentChannel.toAccount})
-                        </span>
-                      )}
-                    </div>
+                    <pre style={{ 
+                      margin: 0, 
+                      fontSize: "12px", 
+                      backgroundColor: "var(--bg-secondary, #f9fafb)", 
+                      padding: "8px", 
+                      borderRadius: "4px",
+                      overflow: "auto"
+                    }}>
+                      {JSON.stringify(selectedTransfer.paymentChannel, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                
+                {selectedTransfer.linkRole && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>Link Role</span>
+                    <span style={{ 
+                      padding: "2px 8px", 
+                      borderRadius: "4px", 
+                      fontSize: "12px",
+                      backgroundColor: "#e0e7ff",
+                      color: "#3730a3"
+                    }}>{selectedTransfer.linkRole}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.parentTransferId && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>Parent Transfer ID</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "12px" }}>{selectedTransfer.parentTransferId}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.tbTransferId && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>TigerBeetle Transfer ID</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "12px" }}>{selectedTransfer.tbTransferId}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.paymentIntegrationLink && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>Payment Integration Link</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "12px" }}>{selectedTransfer.paymentIntegrationLink}</span>
                   </div>
                 )}
                 
@@ -778,6 +834,20 @@ export default function TransactionsClient({
                   <span style={{ color: "var(--text-secondary, #666)" }}>Transfer ID</span>
                   <span style={{ fontFamily: "monospace", fontSize: "12px", color: "var(--text-secondary, #666)" }}>{selectedTransfer.id}</span>
                 </div>
+                
+                {selectedTransfer.fromAccountId && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>From Account ID</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--text-secondary, #666)" }}>{selectedTransfer.fromAccountId}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.toAccountId && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>To Account ID</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--text-secondary, #666)" }}>{selectedTransfer.toAccountId}</span>
+                  </div>
+                )}
               </div>
 
               {/* Metadata Section */}

@@ -28,6 +28,8 @@ export default async function TransactionsPage({
 
   type Transfer = {
     id: string;
+    fromAccountId: string;
+    toAccountId?: string;
     fromAccountName: string;
     toAccountName: string;
     amount: number;
@@ -36,12 +38,16 @@ export default async function TransactionsPage({
     label?: string;
     description?: string;
     createdAt: string;
+    updatedAt?: string;
+    createdBy?: string;
+    createdByName?: string;
     externalTransactionId?: string;
+    tbTransferId?: string;
+    parentTransferId?: string;
+    linkRole?: string;
+    paymentIntegrationLink?: string;
     metadata?: Record<string, unknown>;
-    paymentChannel?: {
-      channelId: string;
-      toAccount: string;
-    };
+    paymentChannel?: Record<string, unknown>;
   };
 
   let accountsData;
@@ -86,7 +92,9 @@ export default async function TransactionsPage({
           to_account_id.category_id.default_account_id AS to_category_default_account,
           from_account_id AS from_account_ref,
           to_account_id AS to_account_ref,
-          metadata
+          created_by.name AS created_by_name,
+          metadata,
+          payment_channel
         FROM transfer
         WHERE from_account_id.category_id = ${selectedCategoryId}
            OR to_account_id.category_id = ${selectedCategoryId}
@@ -144,13 +152,11 @@ export default async function TransactionsPage({
 
             // Parse payment_channel if present
             const paymentChannelRaw = t.payment_channel as Record<string, unknown> | undefined;
-            const paymentChannel = paymentChannelRaw ? {
-              channelId: typeof paymentChannelRaw.channel_id === "string" ? paymentChannelRaw.channel_id : "",
-              toAccount: typeof paymentChannelRaw.to_account === "string" ? paymentChannelRaw.to_account : "",
-            } : undefined;
 
             return {
               id: thingIdToString(t.id) || "",
+              fromAccountId: fromAccountId || "",
+              toAccountId: toAccountId || undefined,
               fromAccountName: fromDisplayName,
               toAccountName: toDisplayName,
               amount:
@@ -164,9 +170,16 @@ export default async function TransactionsPage({
               label: typeof t.label === "string" ? t.label : undefined,
               description: typeof t.description === "string" ? t.description : undefined,
               createdAt: typeof t.created_at === "string" ? t.created_at : "",
+              updatedAt: typeof t.updated_at === "string" ? t.updated_at : undefined,
+              createdBy: thingIdToString(t.created_by) || undefined,
+              createdByName: typeof t.created_by_name === "string" ? t.created_by_name : undefined,
               externalTransactionId: typeof t.external_transaction_id === "string" ? t.external_transaction_id : undefined,
+              tbTransferId: typeof t.tb_transfer_id === "string" ? t.tb_transfer_id : undefined,
+              parentTransferId: thingIdToString(t.parent_transfer_id) || undefined,
+              linkRole: typeof t.link_role === "string" ? t.link_role : undefined,
+              paymentIntegrationLink: thingIdToString(t.payment_integration_link) || undefined,
               metadata: metadata,
-              paymentChannel: paymentChannel?.channelId ? paymentChannel : undefined,
+              paymentChannel: paymentChannelRaw,
             };
           })
           .filter((t) => t.id);
