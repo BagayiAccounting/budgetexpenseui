@@ -10,6 +10,7 @@ type Account = {
   categoryId: string;
   balance?: string;
   type?: string;
+  isDefaultAccount?: boolean;
 };
 
 type MetadataEntry = {
@@ -32,6 +33,12 @@ type Transfer = {
   label?: string;
   description?: string;
   createdAt: string;
+  externalTransactionId?: string;
+  metadata?: Record<string, unknown>;
+  paymentChannel?: {
+    channelId: string;
+    toAccount: string;
+  };
 };
 
 const TRANSFER_TYPES = ["payment", "fees", "refund", "adjustment"] as const;
@@ -41,11 +48,14 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
-function formatBalance(balance?: string): string {
+function formatBalance(balance?: string, flipSign?: boolean): string {
   if (!balance) return "";
   try {
-    const num = parseFloat(balance);
+    let num = parseFloat(balance);
     if (isNaN(num)) return "";
+    // Flip sign for default accounts since they're liabilities from bank's perspective
+    // Don't flip if value is 0 (to avoid -0)
+    if (flipSign && num !== 0) num = -num;
     return formatNumber(num);
   } catch {
     return "";
@@ -90,6 +100,9 @@ export default function TransactionsClient({
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
+  
+  // Detail modal state
+  const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
 
   // Form states
   const [fromAccountId, setFromAccountId] = useState("");
@@ -551,8 +564,15 @@ export default function TransactionsClient({
               <div className="table-amount">Amount</div>
             </div>
 
-            {transfers.map((transfer) => (
-              <div key={transfer.id} className="table-row">
+              {transfers.map((transfer) => (
+              <div 
+                key={transfer.id} 
+                className="table-row"
+                onClick={() => setSelectedTransfer(transfer)}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
                 <div className="table-muted">{formatDate(transfer.createdAt)}</div>
                 <div>{transfer.fromAccountName}</div>
                 <div>{transfer.toAccountName}</div>
@@ -594,6 +614,224 @@ export default function TransactionsClient({
           </div>
         )}
       </div>
+
+      {/* Transfer Detail Modal */}
+      {selectedTransfer && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => setSelectedTransfer(null)}
+        >
+          <div
+            className="panel"
+            style={{ 
+              width: "90%", 
+              maxWidth: "500px", 
+              maxHeight: "90vh",
+              margin: "20px", 
+              backgroundColor: "var(--bg-primary, #ffffff)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header" style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="panel-title">Transfer Details</div>
+              <button
+                type="button"
+                onClick={() => setSelectedTransfer(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  color: "var(--text-secondary, #666)",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ 
+              padding: "20px", 
+              backgroundColor: "var(--bg-primary, #ffffff)",
+              overflowY: "auto",
+              flex: 1,
+            }}>
+              {/* Status Badge */}
+              <div style={{ marginBottom: "20px", textAlign: "center" }}>
+                <span
+                  style={{
+                    padding: "6px 16px",
+                    borderRadius: "20px",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    backgroundColor:
+                      selectedTransfer.status === "posted"
+                        ? "#d1fae5"
+                        : selectedTransfer.status === "pending"
+                          ? "#fef3c7"
+                          : selectedTransfer.status === "draft"
+                            ? "#e5e7eb"
+                            : selectedTransfer.status === "failed"
+                              ? "#fee2e2"
+                              : "#dbeafe",
+                    color:
+                      selectedTransfer.status === "posted"
+                        ? "#065f46"
+                        : selectedTransfer.status === "pending"
+                          ? "#92400e"
+                          : selectedTransfer.status === "draft"
+                            ? "#374151"
+                            : selectedTransfer.status === "failed"
+                              ? "#991b1b"
+                              : "#1e40af",
+                  }}
+                >
+                  {selectedTransfer.status.toUpperCase()}
+                </span>
+              </div>
+
+              {/* Amount */}
+              <div style={{ marginBottom: "24px", textAlign: "center" }}>
+                <div style={{ fontSize: "32px", fontWeight: 600 }}>
+                  {formatNumber(selectedTransfer.amount)}
+                </div>
+                <div style={{ fontSize: "14px", color: "var(--text-secondary, #666)", marginTop: "4px" }}>
+                  {selectedTransfer.type}
+                </div>
+              </div>
+
+              {/* Transfer Flow */}
+              <div style={{ 
+                marginBottom: "20px", 
+                padding: "16px", 
+                backgroundColor: "var(--bg-secondary, #f9fafb)", 
+                borderRadius: "8px" 
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)", marginBottom: "4px" }}>From</div>
+                    <div style={{ fontWeight: 500 }}>{selectedTransfer.fromAccountName}</div>
+                  </div>
+                  <div style={{ padding: "0 16px", color: "var(--text-secondary, #666)" }}>→</div>
+                  <div style={{ flex: 1, textAlign: "right" }}>
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)", marginBottom: "4px" }}>To</div>
+                    <div style={{ fontWeight: 500 }}>{selectedTransfer.toAccountName}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div style={{ display: "grid", gap: "12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ color: "var(--text-secondary, #666)" }}>Date</span>
+                  <span>{selectedTransfer.createdAt ? new Date(selectedTransfer.createdAt).toLocaleString() : "-"}</span>
+                </div>
+                
+                {selectedTransfer.label && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>Label</span>
+                    <span>{selectedTransfer.label}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.description && (
+                  <div style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ color: "var(--text-secondary, #666)", marginBottom: "4px" }}>Description</div>
+                    <div>{selectedTransfer.description}</div>
+                  </div>
+                )}
+                
+                {selectedTransfer.externalTransactionId && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: "var(--text-secondary, #666)" }}>External Transaction ID</span>
+                    <span style={{ fontFamily: "monospace", fontSize: "13px" }}>{selectedTransfer.externalTransactionId}</span>
+                  </div>
+                )}
+                
+                {selectedTransfer.paymentChannel && (
+                  <div style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ color: "var(--text-secondary, #666)", marginBottom: "4px" }}>Payment Channel</div>
+                    <div>
+                      <span style={{ fontWeight: 500 }}>{selectedTransfer.paymentChannel.channelId}</span>
+                      {selectedTransfer.paymentChannel.toAccount && (
+                        <span style={{ marginLeft: "8px", fontFamily: "monospace" }}>
+                          ({selectedTransfer.paymentChannel.toAccount})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ color: "var(--text-secondary, #666)" }}>Transfer ID</span>
+                  <span style={{ fontFamily: "monospace", fontSize: "12px", color: "var(--text-secondary, #666)" }}>{selectedTransfer.id}</span>
+                </div>
+              </div>
+
+              {/* Metadata Section */}
+              {selectedTransfer.metadata && Object.keys(selectedTransfer.metadata).length > 0 && (
+                <div style={{ marginTop: "20px" }}>
+                  <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>Metadata</div>
+                  <div style={{ 
+                    padding: "12px", 
+                    backgroundColor: "var(--bg-secondary, #f9fafb)", 
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                  }}>
+                    {Object.entries(selectedTransfer.metadata).map(([key, value]) => (
+                      <div key={key} style={{ marginBottom: "8px" }}>
+                        <div style={{ color: "var(--text-secondary, #666)", fontSize: "12px", marginBottom: "2px" }}>
+                          {key}
+                        </div>
+                        <div style={{ wordBreak: "break-word" }}>
+                          {typeof value === "object" ? (
+                            <pre style={{ 
+                              margin: 0, 
+                              fontSize: "12px", 
+                              backgroundColor: "var(--bg-primary, #fff)", 
+                              padding: "8px", 
+                              borderRadius: "4px",
+                              overflow: "auto"
+                            }}>
+                              {JSON.stringify(value, null, 2)}
+                            </pre>
+                          ) : (
+                            String(value)
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Close Button */}
+            <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border)", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <button
+                type="button"
+                className="button button-ghost"
+                onClick={() => setSelectedTransfer(null)}
+                style={{ width: "100%" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal for creating transfer */}
       {showModal && (
@@ -671,7 +909,7 @@ export default function TransactionsClient({
                         <option key={acc.id} value={acc.id}>
                           {isExternal 
                             ? acc.name 
-                            : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
+                            : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance, acc.isDefaultAccount)}` : ""}`
                           }
                         </option>
                       );
@@ -700,7 +938,7 @@ export default function TransactionsClient({
                           <option key={acc.id} value={acc.id}>
                             {isExternal 
                               ? acc.name 
-                              : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
+                              : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance, acc.isDefaultAccount)}` : ""}`
                             }
                           </option>
                         );

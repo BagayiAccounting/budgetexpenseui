@@ -53,6 +53,7 @@ export type Account = {
   categoryId: string;
   balance?: string;
   type?: string;
+  isDefaultAccount?: boolean;
 };
 
 function asTbAccount(value: unknown): TbAccount | undefined {
@@ -149,9 +150,9 @@ export async function listAllAccounts(options: {
 
   // Fetch all accounts and also fetch the external account details using $external_account
   const query = `
-    SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account;
+    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(tb_account_id) AS tb_account FROM account;
     LET $ext_id = $external_account;
-    SELECT *, category_id.name AS category_name, fn::tb_account(tb_account_id) AS tb_account FROM account WHERE id = $ext_id LIMIT 1;
+    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(tb_account_id) AS tb_account FROM account WHERE id = $ext_id LIMIT 1;
   `;
 
   const result = await executeSurrealQL({
@@ -164,10 +165,10 @@ export async function listAllAccounts(options: {
     return { status: "skipped", reason: result.error };
   }
 
-  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(result.data[0]);
+  const accountsRaw = getResultArray<AccountRecord & { category_name?: string; category_default_account_id?: unknown }>(result.data[0]);
   
   // Get the external account from the third query result (index 2, since index 1 is LET)
-  const externalAccountArr = getResultArray<AccountRecord & { category_name?: string }>(result.data[2]);
+  const externalAccountArr = getResultArray<AccountRecord & { category_name?: string; category_default_account_id?: unknown }>(result.data[2]);
   const externalAccountResult = externalAccountArr.length > 0 ? externalAccountArr[0] : null;
 
   // Process regular accounts
@@ -180,15 +181,17 @@ export async function listAllAccounts(options: {
       const tbAccount = asTbAccount(a.tb_account);
       const balance = tbAccount?.book_balance;
       const accountType = typeof a.type === "string" ? a.type : undefined;
+      const categoryDefaultAccountId = thingIdToString(a.category_default_account_id);
+      const isDefaultAccount = id && categoryDefaultAccountId ? id === categoryDefaultAccountId : false;
       
       if (!id) return null;
-      return { id, name, categoryName, categoryId, balance, type: accountType };
+      return { id, name, categoryName, categoryId, balance, type: accountType, isDefaultAccount };
     })
     .filter(Boolean) as Account[];
 
   // Add external account if it exists and isn't already in the list
   if (externalAccountResult && typeof externalAccountResult === "object") {
-    const ext = externalAccountResult as AccountRecord & { category_name?: string };
+    const ext = externalAccountResult as AccountRecord & { category_name?: string; category_default_account_id?: unknown };
     const extId = thingIdToString(ext.id);
     
     if (extId && !accounts.some(a => a.id === extId)) {
@@ -198,6 +201,8 @@ export async function listAllAccounts(options: {
       const extTbAccount = asTbAccount(ext.tb_account);
       const extBalance = extTbAccount?.book_balance;
       const extType = typeof ext.type === "string" ? ext.type : undefined;
+      const extCategoryDefaultAccountId = thingIdToString(ext.category_default_account_id);
+      const extIsDefaultAccount = extId && extCategoryDefaultAccountId ? extId === extCategoryDefaultAccountId : false;
       
       accounts.push({
         id: extId,
@@ -206,6 +211,7 @@ export async function listAllAccounts(options: {
         categoryId: extCategoryId,
         balance: extBalance,
         type: extType,
+        isDefaultAccount: extIsDefaultAccount,
       });
     }
   }

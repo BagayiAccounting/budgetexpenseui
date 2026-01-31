@@ -36,6 +36,12 @@ export default async function TransactionsPage({
     label?: string;
     description?: string;
     createdAt: string;
+    externalTransactionId?: string;
+    metadata?: Record<string, unknown>;
+    paymentChannel?: {
+      channelId: string;
+      toAccount: string;
+    };
   };
 
   let accountsData;
@@ -136,6 +142,13 @@ export default async function TransactionsPage({
               toDisplayName = typeof t.to_account_name === "string" ? t.to_account_name : "(Unknown)";
             }
 
+            // Parse payment_channel if present
+            const paymentChannelRaw = t.payment_channel as Record<string, unknown> | undefined;
+            const paymentChannel = paymentChannelRaw ? {
+              channelId: typeof paymentChannelRaw.channel_id === "string" ? paymentChannelRaw.channel_id : "",
+              toAccount: typeof paymentChannelRaw.to_account === "string" ? paymentChannelRaw.to_account : "",
+            } : undefined;
+
             return {
               id: thingIdToString(t.id) || "",
               fromAccountName: fromDisplayName,
@@ -151,6 +164,9 @@ export default async function TransactionsPage({
               label: typeof t.label === "string" ? t.label : undefined,
               description: typeof t.description === "string" ? t.description : undefined,
               createdAt: typeof t.created_at === "string" ? t.created_at : "",
+              externalTransactionId: typeof t.external_transaction_id === "string" ? t.external_transaction_id : undefined,
+              metadata: metadata,
+              paymentChannel: paymentChannel?.channelId ? paymentChannel : undefined,
             };
           })
           .filter((t) => t.id);
