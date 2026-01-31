@@ -195,11 +195,16 @@ export default function CategoryDetailClient({ category }: { category: Category 
         body: JSON.stringify({ categoryUserId, role: newRole }),
       });
 
-      if (res.ok) {
-        await loadCategoryUsers();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && data.error) || "Failed to update user role");
+        return;
       }
+
+      await loadCategoryUsers();
     } catch (err) {
       console.error("Failed to update user role:", err);
+      setError("Failed to update user role");
     }
   };
 

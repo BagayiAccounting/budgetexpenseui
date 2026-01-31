@@ -277,6 +277,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Failed to update role", details: updateResult.error }, { status: 500 });
     }
 
+    // Check if the update actually modified a record
+    const updated = getResultArray<{ id?: unknown }>(updateResult.data[0]);
+    if (updated.length === 0) {
+      return NextResponse.json({ error: "Category user not found or you don't have permission to update it" }, { status: 404 });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error updating category user:", error);
