@@ -957,7 +957,7 @@ export default function TransactionsClient({
           >
             <div className="panel-header" style={{ flexShrink: 0 }}>
               <div className="panel-title">
-                {modalMode === "buygoods" ? "Pay via Buy Goods" : modalMode === "sendmoney" ? "M-Pesa Send Money" : "Add Transfer"}
+                {modalMode === "buygoods" ? "Pay via Buy Goods" : modalMode === "sendmoney" ? "M-Pesa Send Money" : "Record Transaction"}
               </div>
             </div>
             <div style={{ 
@@ -1397,7 +1397,7 @@ export default function TransactionsClient({
                         ? "Submit Payment"
                         : modalMode === "sendmoney"
                           ? "Send Money"
-                          : "Submit Transfer"
+                          : "Record Transaction"
                       : "Save Draft"}
                 </button>
               </div>
