@@ -1,11 +1,98 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { createAccount } from "@/lib/settingsService";
+import { executeSurrealQL, getResultArray, thingIdToString } from "@/lib/surrealdb";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
 type AccountType = (typeof ACCOUNT_TYPES)[number];
 
 export const dynamic = "force-dynamic";
+
+// GET /api/settings/accounts - List accounts (optionally with balances from TigerBeetle)
+export async function GET(req: Request) {
+  console.log("[api] GET /api/settings/accounts");
+
+  const session = await auth0.getSession();
+  if (!session?.user) {
+    console.log("[api] unauthorized (no session)");
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(req.url);
+  const withBalances = url.searchParams.get("withBalances") === "true";
+
+  const audience = process.env.AUTH0_AUDIENCE || process.env.NEXT_PUBLIC_AUTH0_AUDIENCE;
+  const scope = process.env.AUTH0_SCOPE;
+  const accessTokenOptions = {
+    ...(audience ? { audience } : {}),
+    ...(scope ? { scope } : {}),
+  };
+
+  let token: string | undefined;
+  try {
+    const res = await auth0.getAccessToken(accessTokenOptions);
+    token = res.token;
+  } catch {
+    console.log("[api] token_error");
+    return NextResponse.json({ error: "token_error" }, { status: 500 });
+  }
+
+  // Query with or without TigerBeetle balance based on parameter
+  const query = withBalances
+    ? `SELECT *, category_id.name AS category_name, fn::tb_account(id) AS tb_account FROM account;`
+    : `SELECT *, category_id.name AS category_name FROM account;`;
+
+  const result = await executeSurrealQL({
+    token,
+    query,
+    logName: `accountsRoute.GET ${withBalances ? "(with balances)" : "(without balances)"}`,
+  });
+
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: 500 });
+  }
+
+  type AccountRecord = {
+    id: unknown;
+    name?: unknown;
+    category_id?: unknown;
+    category_name?: string;
+    tb_account?: {
+      book_balance?: string;
+      spendable_balance?: string;
+      projected_balance?: string;
+    };
+    type?: string;
+  };
+
+  const accountsRaw = getResultArray<AccountRecord>(result.data[0]);
+
+  const accounts = accountsRaw
+    .map((a) => {
+      const id = thingIdToString(a.id);
+      const name = typeof a.name === "string" ? a.name : "(Unnamed)";
+      const categoryName = typeof a.category_name === "string" ? a.category_name : "(Unknown)";
+      const categoryId = thingIdToString(a.category_id) || "";
+      const accountType = typeof a.type === "string" ? a.type : undefined;
+      
+      // Extract balance if available
+      let balance: string | undefined;
+      if (withBalances && a.tb_account && typeof a.tb_account === "object") {
+        const tbAccount = a.tb_account;
+        // Handle wrapped response from fn::tb_account
+        const data = (tbAccount as Record<string, unknown>).data || tbAccount;
+        balance = typeof (data as Record<string, unknown>).book_balance === "string" 
+          ? (data as Record<string, unknown>).book_balance as string 
+          : undefined;
+      }
+
+      if (!id) return null;
+      return { id, name, categoryName, categoryId, type: accountType, balance };
+    })
+    .filter(Boolean);
+
+  return NextResponse.json({ accounts });
+}
 
 export async function POST(req: Request) {
   console.log("[api] POST /api/settings/accounts");

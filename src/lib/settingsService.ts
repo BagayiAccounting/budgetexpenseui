@@ -147,11 +147,12 @@ export async function listAllAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  // Fetch all accounts and also fetch the external account details using $external_account
+  // Fetch all accounts WITHOUT TigerBeetle balance (for performance - avoids N network calls)
+  // Also fetch the external account ID using $external_account
   const query = `
-    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(id) AS tb_account FROM account;
+    SELECT *, category_id.name AS category_name FROM account;
     LET $ext_id = $external_account;
-    SELECT *, category_id.name AS category_name, category_id.default_account_id AS category_default_account_id, fn::tb_account(id) AS tb_account FROM account WHERE id = $ext_id LIMIT 1;
+    SELECT id FROM account WHERE id = $ext_id LIMIT 1;
   `;
 
   const result = await executeSurrealQL({
@@ -164,52 +165,40 @@ export async function listAllAccounts(options: {
     return { status: "skipped", reason: result.error };
   }
 
-  const accountsRaw = getResultArray<AccountRecord & { category_name?: string; category_default_account_id?: unknown }>(result.data[0]);
+  const accountsRaw = getResultArray<AccountRecord & { category_name?: string }>(result.data[0]);
   
   // Get the external account from the third query result (index 2, since index 1 is LET)
-  const externalAccountArr = getResultArray<AccountRecord & { category_name?: string; category_default_account_id?: unknown }>(result.data[2]);
+  const externalAccountArr = getResultArray<{ id: unknown }>(result.data[2]);
   const externalAccountResult = externalAccountArr.length > 0 ? externalAccountArr[0] : null;
 
-  // Process regular accounts
+  // Process regular accounts (without balance since we're not fetching TigerBeetle data)
   const accounts: Account[] = accountsRaw
     .map((a) => {
       const id = thingIdToString(a.id);
       const name = typeof a.name === "string" ? a.name : "(Unnamed)";
       const categoryName = typeof a.category_name === "string" ? a.category_name : "(Unknown)";
       const categoryId = thingIdToString(a.category_id) || "";
-      const tbAccount = asTbAccount(a.tb_account);
-      const balance = tbAccount?.book_balance;
       const accountType = typeof a.type === "string" ? a.type : undefined;
       if (!id) return null;
-      return { id, name, categoryName, categoryId, balance, type: accountType };
+      // Note: balance is no longer fetched for performance - it will be undefined
+      return { id, name, categoryName, categoryId, type: accountType };
     })
     .filter(Boolean) as Account[];
 
-  // Add external account if it exists and isn't already in the list
-  if (externalAccountResult && typeof externalAccountResult === "object") {
-    const ext = externalAccountResult as AccountRecord & { category_name?: string; category_default_account_id?: unknown };
-    const extId = thingIdToString(ext.id);
-    
-    if (extId && !accounts.some(a => a.id === extId)) {
-      const extName = typeof ext.name === "string" ? ext.name : "External Account";
-      const extCategoryName = typeof ext.category_name === "string" ? ext.category_name : "(External)";
-      const extCategoryId = thingIdToString(ext.category_id) || "";
-      const extTbAccount = asTbAccount(ext.tb_account);
-      const extBalance = extTbAccount?.book_balance;
-      const extType = typeof ext.type === "string" ? ext.type : undefined;
-      accounts.push({
-        id: extId,
-        name: extName,
-        categoryName: extCategoryName,
-        categoryId: extCategoryId,
-        balance: extBalance,
-        type: extType,
-      });
-    }
-  }
-
   // Get external account ID
   const externalAccountId = externalAccountResult ? thingIdToString(externalAccountResult.id) : undefined;
+
+  // Add external account if it exists and isn't already in the list
+  if (externalAccountId && !accounts.some(a => a.id === externalAccountId)) {
+    // Find the external account from the accounts list or create a minimal entry
+    accounts.push({
+      id: externalAccountId,
+      name: "External Account",
+      categoryName: "(External)",
+      categoryId: "",
+      type: undefined,
+    });
+  }
 
   return { status: "ok", accounts, externalAccountId };
 }

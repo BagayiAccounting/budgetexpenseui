@@ -123,6 +123,10 @@ export default function TransactionsClient({
   const [transactionDate, setTransactionDate] = useState("");
   const [submitDraft, setSubmitDraft] = useState(true);
   
+  // Lazy-loaded account balances (fetched when modal opens)
+  const [accountBalances, setAccountBalances] = useState<Record<string, string>>({});
+  const [loadingBalances, setLoadingBalances] = useState(false);
+  
   // External account metadata (for transfers to external accounts)
   const [customMetadata, setCustomMetadata] = useState<MetadataEntry[]>([]);
   
@@ -155,6 +159,31 @@ export default function TransactionsClient({
     setSelectedAccountId(accountId);
   }
 
+  // Fetch account balances on demand (when modal opens)
+  async function fetchAccountBalances() {
+    if (loadingBalances || Object.keys(accountBalances).length > 0) return;
+    setLoadingBalances(true);
+    try {
+      const res = await fetch("/api/settings/accounts?withBalances=true");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.accounts) {
+          const balances: Record<string, string> = {};
+          for (const acc of data.accounts) {
+            if (acc.balance) {
+              balances[acc.id] = acc.balance;
+            }
+          }
+          setAccountBalances(balances);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch account balances:", err);
+    } finally {
+      setLoadingBalances(false);
+    }
+  }
+
   function openModal() {
     setModalMode("manual");
     setShowModal(true);
@@ -175,6 +204,8 @@ export default function TransactionsClient({
     setExternalTransactionId("");
     setSubmitDraft(true);
     setError(null);
+    // Lazy-load account balances when modal opens
+    void fetchAccountBalances();
   }
 
   function addMetadataEntry() {
@@ -470,7 +501,8 @@ export default function TransactionsClient({
                   setShowTransactionMenu(false);
                   setModalMode("sendmoney");
                   setShowModal(true);
-                  setFromAccountId("");
+                  // If account filter is selected, pre-select it as From Account
+                  setFromAccountId(selectedAccountId || "");
                   setPhoneNumber("");
                   setAmount("");
                   setDisplayAmount("");
@@ -479,6 +511,8 @@ export default function TransactionsClient({
                   setLabel("");
                   setSubmitDraft(true);
                   setError(null);
+                  // Lazy-load account balances
+                  void fetchAccountBalances();
                 }}
                 style={{
                   display: "block",
@@ -503,7 +537,8 @@ export default function TransactionsClient({
                   setShowTransactionMenu(false);
                   setModalMode("buygoods");
                   setShowModal(true);
-                  setFromAccountId("");
+                  // If account filter is selected, pre-select it as From Account
+                  setFromAccountId(selectedAccountId || "");
                   setBuyGoodsNumber("");
                   setAmount("");
                   setDisplayAmount("");
@@ -512,6 +547,8 @@ export default function TransactionsClient({
                   setLabel("");
                   setSubmitDraft(true);
                   setError(null);
+                  // Lazy-load account balances
+                  void fetchAccountBalances();
                 }}
                 style={{
                   display: "block",
@@ -1024,23 +1061,21 @@ export default function TransactionsClient({
                   className="setup-input"
                   value={fromAccountId}
                   onChange={(e) => setFromAccountId(e.target.value)}
-                  disabled={isBusy || !!selectedAccountId}
+                  disabled={isBusy}
                   style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                 >
                   <option value="">Select account</option>
                   {categoryAccounts
                     .filter((acc) => modalMode === "manual" ? acc.id !== toAccountId : true)
-                    .map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name}{acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
-                      </option>
-                    ))}
+                    .map((acc) => {
+                      const balance = accountBalances[acc.id];
+                      return (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}{balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}
+                        </option>
+                      );
+                    })}
                 </select>
-                {selectedAccountId && (
-                  <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                    From account is locked to the selected account filter
-                  </div>
-                )}
               </div>
 
               {modalMode === "manual" ? (
@@ -1060,11 +1095,12 @@ export default function TransactionsClient({
                       .filter((acc) => acc.id !== fromAccountId)
                       .map((acc) => {
                         const isExternal = externalAccountId && acc.id === externalAccountId;
+                        const balance = accountBalances[acc.id];
                         return (
                           <option key={acc.id} value={acc.id}>
                             {isExternal 
                               ? acc.name 
-                              : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
+                              : `${acc.name} (${acc.categoryName})${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
                             }
                           </option>
                         );
