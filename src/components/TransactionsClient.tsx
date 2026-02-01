@@ -105,6 +105,7 @@ export default function TransactionsClient({
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   
   // Detail modal state
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
@@ -136,18 +137,29 @@ export default function TransactionsClient({
   const isToExternalAccount = externalAccountId ? toAccountId === externalAccountId : false;
   const involvesExternalAccount = isFromExternalAccount || isToExternalAccount;
 
-  // Note: categoryAccounts can be used for category-specific filtering if needed
-  // const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
+  // Filter accounts by selected category
+  const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
+  
+  // Filter transfers by selected account (if any)
+  const filteredTransfers = selectedAccountId 
+    ? transfers.filter((t) => t.fromAccountId === selectedAccountId || t.toAccountId === selectedAccountId)
+    : transfers;
 
   function handleCategoryChange(categoryId: string) {
     setSelectedCategoryId(categoryId);
+    setSelectedAccountId(""); // Reset account filter when category changes
     router.push(`/dashboard/transactions?categoryId=${categoryId}`);
+  }
+
+  function handleAccountChange(accountId: string) {
+    setSelectedAccountId(accountId);
   }
 
   function openModal() {
     setModalMode("manual");
     setShowModal(true);
-    setFromAccountId("");
+    // If account filter is selected, pre-select it as From Account
+    setFromAccountId(selectedAccountId || "");
     setToAccountId("");
     setBuyGoodsNumber("");
     setAmount("");
@@ -524,43 +536,66 @@ export default function TransactionsClient({
         </div>
       </header>
 
-      {/* Category Switcher */}
-      {categories.length > 0 && (
-        <div style={{ marginBottom: "24px" }}>
+      {/* Filters */}
+      <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
+        {/* Category Switcher */}
+        {categories.length > 0 && (
+          <div style={{ flex: "1", minWidth: "200px", maxWidth: "300px" }}>
+            <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+              Category
+            </label>
+            <select
+              className="setup-input"
+              value={selectedCategoryId}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+              style={{ width: "100%" }}
+            >
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Account Filter */}
+        <div style={{ flex: "1", minWidth: "200px", maxWidth: "300px" }}>
           <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-            Category
+            Account
           </label>
           <select
             className="setup-input"
-            value={selectedCategoryId}
-            onChange={(e) => handleCategoryChange(e.target.value)}
-            style={{ maxWidth: "300px" }}
+            value={selectedAccountId}
+            onChange={(e) => handleAccountChange(e.target.value)}
+            style={{ width: "100%" }}
           >
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
+            <option value="">All Accounts</option>
+            {categoryAccounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                {acc.name}
               </option>
             ))}
           </select>
         </div>
-      )}
+      </div>
 
       <div className="panel">
         <div className="panel-header">
           <div>
             <div className="panel-title">Transactions</div>
             <div className="panel-subtitle">
-              {transfers.length > 0
-                ? `${transfers.length} transaction${transfers.length === 1 ? "" : "s"} found`
+              {filteredTransfers.length > 0
+                ? `${filteredTransfers.length} transaction${filteredTransfers.length === 1 ? "" : "s"} found${selectedAccountId ? " for selected account" : ""}`
                 : "No transactions found"}
             </div>
           </div>
         </div>
 
-        {transfers.length === 0 ? (
+        {filteredTransfers.length === 0 ? (
           <div style={{ padding: "40px", textAlign: "center", color: "var(--text-secondary)" }}>
-            <p>No transactions found for this category.</p>
-            <p style={{ fontSize: "14px", marginTop: "8px" }}>Click &ldquo;Add Transaction&rdquo; to create one.</p>
+            <p>No transactions found{selectedAccountId ? " for this account" : " for this category"}.</p>
+            <p style={{ fontSize: "14px", marginTop: "8px" }}>Click the menu to create a transaction.</p>
           </div>
         ) : (
           <div className="table">
@@ -573,7 +608,7 @@ export default function TransactionsClient({
               <div className="table-amount">Amount</div>
             </div>
 
-              {transfers.map((transfer) => (
+              {filteredTransfers.map((transfer) => (
               <div 
                 key={transfer.id} 
                 className="table-row"
@@ -989,24 +1024,23 @@ export default function TransactionsClient({
                   className="setup-input"
                   value={fromAccountId}
                   onChange={(e) => setFromAccountId(e.target.value)}
-                  disabled={isBusy}
+                  disabled={isBusy || !!selectedAccountId}
                   style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                 >
                   <option value="">Select account</option>
-                  {accounts
+                  {categoryAccounts
                     .filter((acc) => modalMode === "manual" ? acc.id !== toAccountId : true)
-                    .map((acc) => {
-                      const isExternal = externalAccountId && acc.id === externalAccountId;
-                      return (
-                        <option key={acc.id} value={acc.id}>
-                          {isExternal 
-                            ? acc.name 
-                            : `${acc.name} (${acc.categoryName})${acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}`
-                          }
-                        </option>
-                      );
-                    })}
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}{acc.balance ? ` - Balance: ${formatBalance(acc.balance)}` : ""}
+                      </option>
+                    ))}
                 </select>
+                {selectedAccountId && (
+                  <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                    From account is locked to the selected account filter
+                  </div>
+                )}
               </div>
 
               {modalMode === "manual" ? (
