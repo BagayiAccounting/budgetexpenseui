@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 type Account = {
@@ -123,9 +123,10 @@ export default function TransactionsClient({
   const [transactionDate, setTransactionDate] = useState("");
   const [submitDraft, setSubmitDraft] = useState(true);
   
-  // Lazy-loaded account balances (fetched when modal opens)
+  // Account balances (preloaded in background on mount)
   const [accountBalances, setAccountBalances] = useState<Record<string, string>>({});
   const [loadingBalances, setLoadingBalances] = useState(false);
+  const [balancesLoaded, setBalancesLoaded] = useState(false);
   
   // External account metadata (for transfers to external accounts)
   const [customMetadata, setCustomMetadata] = useState<MetadataEntry[]>([]);
@@ -159,9 +160,9 @@ export default function TransactionsClient({
     setSelectedAccountId(accountId);
   }
 
-  // Fetch account balances on demand (when modal opens)
-  async function fetchAccountBalances() {
-    if (loadingBalances || Object.keys(accountBalances).length > 0) return;
+  // Fetch account balances (can be called on demand or preloaded)
+  const fetchAccountBalances = useCallback(async () => {
+    if (loadingBalances || balancesLoaded) return;
     setLoadingBalances(true);
     try {
       const res = await fetch("/api/settings/accounts?withBalances=true");
@@ -175,6 +176,7 @@ export default function TransactionsClient({
             }
           }
           setAccountBalances(balances);
+          setBalancesLoaded(true);
         }
       }
     } catch (err) {
@@ -182,7 +184,16 @@ export default function TransactionsClient({
     } finally {
       setLoadingBalances(false);
     }
-  }
+  }, [loadingBalances, balancesLoaded]);
+
+  // Preload account balances in background when component mounts
+  useEffect(() => {
+    // Start fetching balances after a short delay to not block initial render
+    const timer = setTimeout(() => {
+      void fetchAccountBalances();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [fetchAccountBalances]);
 
   function openModal() {
     setModalMode("manual");
