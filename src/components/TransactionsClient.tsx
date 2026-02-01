@@ -582,18 +582,18 @@ export default function TransactionsClient({
                 onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
               >
-                <div className="table-muted">{formatDate(transfer.createdAt)}</div>
-                <div>{transfer.fromAccountName}</div>
-                <div>{transfer.toAccountName}</div>
-                <div className="table-muted" style={{ fontFamily: transfer.externalTransactionId ? "monospace" : undefined, fontSize: transfer.externalTransactionId ? "12px" : undefined }}>
+                <div className="table-muted" data-label="Date">{formatDate(transfer.createdAt)}</div>
+                <div data-label="From">{transfer.fromAccountName}</div>
+                <div data-label="To">{transfer.toAccountName}</div>
+                <div className="table-muted table-ref" data-label="Ref" style={{ fontFamily: transfer.externalTransactionId ? "monospace" : undefined, fontSize: transfer.externalTransactionId ? "11px" : undefined }}>
                   {transfer.externalTransactionId || transfer.label || "-"}
                 </div>
-                <div>
+                <div data-label="Status">
                   <span
                     style={{
                       padding: "2px 8px",
                       borderRadius: "4px",
-                      fontSize: "12px",
+                      fontSize: "11px",
                       backgroundColor:
                         transfer.status === "posted"
                           ? "#d1fae5"
@@ -619,7 +619,7 @@ export default function TransactionsClient({
                     {transfer.status}
                   </span>
                 </div>
-                <div className="table-amount">{formatNumber(transfer.amount)}</div>
+                <div className="table-amount" data-label="Amount">{formatNumber(transfer.amount)}</div>
               </div>
             ))}
           </div>
