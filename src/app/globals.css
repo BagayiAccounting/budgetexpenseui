@@ -627,6 +627,17 @@ body > * {
   box-shadow: 0 0 0 4px var(--ring);
 }
 
+/* Hide number input spinners/arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .setup-chips {
   display: flex;
   flex-wrap: wrap;

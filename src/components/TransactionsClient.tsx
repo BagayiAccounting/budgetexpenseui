@@ -115,6 +115,7 @@ export default function TransactionsClient({
   const [buyGoodsNumber, setBuyGoodsNumber] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("");
+  const [displayAmount, setDisplayAmount] = useState("");
   const [transferType, setTransferType] = useState<TransferType>("payment");
   const [description, setDescription] = useState("");
   const [label, setLabel] = useState("");
@@ -150,6 +151,7 @@ export default function TransactionsClient({
     setToAccountId("");
     setBuyGoodsNumber("");
     setAmount("");
+    setDisplayAmount("");
     setTransferType("payment");
     setDescription("");
     setLabel("");
@@ -459,6 +461,7 @@ export default function TransactionsClient({
                   setFromAccountId("");
                   setPhoneNumber("");
                   setAmount("");
+                  setDisplayAmount("");
                   setTransferType("payment");
                   setDescription("");
                   setLabel("");
@@ -491,6 +494,7 @@ export default function TransactionsClient({
                   setFromAccountId("");
                   setBuyGoodsNumber("");
                   setAmount("");
+                  setDisplayAmount("");
                   setTransferType("payment");
                   setDescription("");
                   setLabel("");
@@ -1091,11 +1095,27 @@ export default function TransactionsClient({
                 </label>
                 <input
                   className="setup-input"
-                  type="number"
-                  step="0.01"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="Enter amount"
+                  type="text"
+                  inputMode="decimal"
+                  value={displayAmount}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Remove commas to get raw value
+                    const rawValue = value.replace(/,/g, "");
+                    // Only allow digits and one decimal point
+                    if (/^[0-9]*\.?[0-9]*$/.test(rawValue)) {
+                      setAmount(rawValue);
+                      // Format with commas for display
+                      if (rawValue) {
+                        const parts = rawValue.split(".");
+                        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                        setDisplayAmount(parts.join("."));
+                      } else {
+                        setDisplayAmount("");
+                      }
+                    }
+                  }}
+                  placeholder="Enter amount (e.g., 1,000.00)"
                   disabled={isBusy}
                   style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   autoFocus
