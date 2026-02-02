@@ -190,68 +190,10 @@ export default function TransactionsClient({
     return () => clearTimeout(timer);
   }, [fetchAccountBalances]);
 
-  // Live transfer updates state
-  const [liveTransfers, setLiveTransfers] = useState<Transfer[]>(transfers);
-  const [liveConnectionStatus, setLiveConnectionStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
-
-  // Subscribe to live transfer updates via SSE
-  useEffect(() => {
-    if (categoryAccounts.length === 0) return;
-
-    // Get account IDs for the current category
-    const accountIds = categoryAccounts.map(acc => acc.id).join(",");
-    
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-    
-    function connect() {
-      setLiveConnectionStatus("connecting");
-      eventSource = new EventSource(`/api/transfers/live?accountIds=${encodeURIComponent(accountIds)}`);
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          // Handle connected message from server
-          if (data.type === "connected") {
-            setLiveConnectionStatus("connected");
-          }
-          // Handle transfer updates
-          if (data.type === "update" && Array.isArray(data.transfers)) {
-            setLiveConnectionStatus("connected");
-            setLiveTransfers(data.transfers);
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      };
-      
-      eventSource.onerror = () => {
-        setLiveConnectionStatus("disconnected");
-        eventSource?.close();
-        // Reconnect after 5 seconds
-        reconnectTimeout = setTimeout(connect, 5000);
-      };
-    }
-    
-    connect();
-    
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-    };
-  }, [categoryAccounts]);
-
-  // Use live transfers if available, otherwise fall back to initial transfers
-  const displayTransfers = liveTransfers.length > 0 ? liveTransfers : transfers;
-  
   // Filter transfers by selected account (if any)
   const filteredTransfers = selectedAccountId 
-    ? displayTransfers.filter((t) => t.fromAccountId === selectedAccountId || t.toAccountId === selectedAccountId)
-    : displayTransfers;
+    ? transfers.filter((t) => t.fromAccountId === selectedAccountId || t.toAccountId === selectedAccountId)
+    : transfers;
 
   function openModal() {
     setModalMode("manual");
@@ -689,48 +631,7 @@ export default function TransactionsClient({
       <div className="panel">
         <div className="panel-header">
           <div>
-            <div className="panel-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              Transactions
-              {/* Live updates indicator */}
-              <span
-                title={
-                  liveConnectionStatus === "connected" 
-                    ? "Live updates active" 
-                    : liveConnectionStatus === "connecting" 
-                      ? "Connecting..." 
-                      : "Live updates disconnected"
-                }
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  fontSize: "11px",
-                  padding: "2px 6px",
-                  borderRadius: "10px",
-                  backgroundColor: 
-                    liveConnectionStatus === "connected" 
-                      ? "#d1fae5" 
-                      : liveConnectionStatus === "connecting" 
-                        ? "#fef3c7" 
-                        : "#fee2e2",
-                  color: 
-                    liveConnectionStatus === "connected" 
-                      ? "#065f46" 
-                      : liveConnectionStatus === "connecting" 
-                        ? "#92400e" 
-                        : "#991b1b",
-                }}
-              >
-                <span style={{ 
-                  width: "6px", 
-                  height: "6px", 
-                  borderRadius: "50%", 
-                  backgroundColor: "currentColor",
-                  animation: liveConnectionStatus === "connecting" ? "pulse 1s infinite" : undefined,
-                }} />
-                {liveConnectionStatus === "connected" ? "Live" : liveConnectionStatus === "connecting" ? "..." : "Offline"}
-              </span>
-            </div>
+            <div className="panel-title">Transactions</div>
             <div className="panel-subtitle">
               {filteredTransfers.length > 0
                 ? `${filteredTransfers.length} transaction${filteredTransfers.length === 1 ? "" : "s"} found${selectedAccountId ? " for selected account" : ""}`

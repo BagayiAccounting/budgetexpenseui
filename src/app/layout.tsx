@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Auth0Provider } from "@auth0/nextjs-auth0/client";
-import InstallPrompt from "@/components/InstallPrompt";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -52,7 +51,6 @@ export default function RootLayout({
         />
         <Auth0Provider>
           {children}
-          <InstallPrompt />
         </Auth0Provider>
       </body>
     </html>
