@@ -1170,11 +1170,21 @@ export default function TransactionsClient({
                     type="tel"
                     value={phoneNumber}
                     onChange={(e) => {
-                      const value = e.target.value;
-                      // Only allow digits and max 12 characters
-                      if (/^\d*$/.test(value)) {
-                        setPhoneNumber(value.slice(0, 12));
+                      // Strip all non-digit characters (handles paste with spaces, dashes, +, etc.)
+                      const value = e.target.value.replace(/\D/g, "");
+                      setPhoneNumber(value.slice(0, 12));
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pastedText = e.clipboardData.getData("text");
+                      // Strip all non-digit characters from pasted content
+                      const digits = pastedText.replace(/\D/g, "");
+                      // If pasted number starts with 0, convert to 254 format
+                      let cleanNumber = digits;
+                      if (digits.startsWith("0") && digits.length >= 10) {
+                        cleanNumber = "254" + digits.slice(1);
                       }
+                      setPhoneNumber(cleanNumber.slice(0, 12));
                     }}
                     placeholder="e.g., 254712345678"
                     disabled={isBusy}
