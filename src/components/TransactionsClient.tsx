@@ -395,6 +395,23 @@ export default function TransactionsClient({
       return;
     }
 
+    // Validate Kenyan phone number format: must be 12 digits starting with 254
+    const trimmedPhone = phoneNumber.trim();
+    if (trimmedPhone.length !== 12) {
+      setError("Phone number must be 12 digits (e.g., 254712345678)");
+      return;
+    }
+    if (!trimmedPhone.startsWith("254")) {
+      setError("Phone number must start with 254 (Kenya country code)");
+      return;
+    }
+    // Check the digit after 254 - valid prefixes are 7XX, 1XX for Kenyan mobile numbers
+    const afterCountryCode = trimmedPhone.substring(3);
+    if (!/^[17]\d{8}$/.test(afterCountryCode)) {
+      setError("Invalid Kenyan mobile number. Must be 254 followed by 7XXXXXXXX or 1XXXXXXXX");
+      return;
+    }
+
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
       setError("Amount must be a positive number");
@@ -514,7 +531,7 @@ export default function TransactionsClient({
                   setShowModal(true);
                   // If account filter is selected, pre-select it as From Account
                   setFromAccountId(selectedAccountId || "");
-                  setPhoneNumber("");
+                  setPhoneNumber("254");
                   setAmount("");
                   setDisplayAmount("");
                   setTransferType("payment");
@@ -1162,10 +1179,24 @@ export default function TransactionsClient({
                     placeholder="e.g., 254712345678"
                     disabled={isBusy}
                     maxLength={12}
-                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+                    style={{ 
+                      width: "100%", 
+                      maxWidth: "100%", 
+                      boxSizing: "border-box",
+                      borderColor: phoneNumber.length > 0 && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))) ? "#f59e0b" : undefined
+                    }}
                   />
-                  <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                    Enter recipient&apos;s phone number (include country code)
+                  <div style={{ marginTop: "4px", fontSize: "12px", color: phoneNumber.length > 0 && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))) ? "#f59e0b" : "var(--text-secondary, #666)" }}>
+                    {phoneNumber.length === 0 
+                      ? "Enter recipient's phone number (e.g., 254712345678)"
+                      : phoneNumber.length !== 12 
+                        ? `${12 - phoneNumber.length} more digit${12 - phoneNumber.length === 1 ? "" : "s"} needed`
+                        : !phoneNumber.startsWith("254")
+                          ? "Must start with 254 (Kenya country code)"
+                          : !/^[17]\d{8}$/.test(phoneNumber.substring(3))
+                            ? "Invalid format. After 254, must be 7XXXXXXXX or 1XXXXXXXX"
+                            : "✓ Valid phone number"
+                    }
                   </div>
                 </div>
               )}
@@ -1459,6 +1490,39 @@ export default function TransactionsClient({
                 </label>
               </div>
 
+              {/* Validation summary for Send Money */}
+              {modalMode === "sendmoney" && (
+                (() => {
+                  const issues: string[] = [];
+                  if (!fromAccountId) issues.push("Select a source account");
+                  if (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))) {
+                    issues.push("Enter a valid phone number");
+                  }
+                  if (!amount || parseFloat(amount) <= 0) issues.push("Enter an amount");
+                  
+                  if (issues.length > 0) {
+                    return (
+                      <div style={{ 
+                        marginBottom: "12px", 
+                        padding: "10px 12px", 
+                        backgroundColor: "#fef3c7", 
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        color: "#92400e"
+                      }}>
+                        <div style={{ fontWeight: 500, marginBottom: "4px" }}>To send money, please:</div>
+                        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                          {issues.map((issue, i) => (
+                            <li key={i}>{issue}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()
+              )}
+
               <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
                 <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
                   Cancel
@@ -1480,7 +1544,7 @@ export default function TransactionsClient({
                     (modalMode === "manual" && !toAccountId) ||
                     (modalMode === "manual" && involvesExternalAccount && (!externalTransactionId.trim() || !extMetaId.trim() || !extMetaName.trim() || !extMetaType.trim())) ||
                     (modalMode === "buygoods" && !buyGoodsNumber.trim()) ||
-                    (modalMode === "sendmoney" && !phoneNumber.trim())
+                    (modalMode === "sendmoney" && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))))
                   }
                 >
                   {isBusy
