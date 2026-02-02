@@ -1165,37 +1165,88 @@ export default function TransactionsClient({
                   <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
                     Phone Number *
                   </label>
-                  <input
-                    className="setup-input"
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => {
-                      // Strip all non-digit characters (handles paste with spaces, dashes, +, etc.)
-                      const value = e.target.value.replace(/\D/g, "");
-                      setPhoneNumber(value.slice(0, 12));
-                    }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const pastedText = e.clipboardData.getData("text");
-                      // Strip all non-digit characters from pasted content
-                      const digits = pastedText.replace(/\D/g, "");
-                      // If pasted number starts with 0, convert to 254 format
-                      let cleanNumber = digits;
-                      if (digits.startsWith("0") && digits.length >= 10) {
-                        cleanNumber = "254" + digits.slice(1);
-                      }
-                      setPhoneNumber(cleanNumber.slice(0, 12));
-                    }}
-                    placeholder="e.g., 254712345678"
-                    disabled={isBusy}
-                    maxLength={12}
-                    style={{ 
-                      width: "100%", 
-                      maxWidth: "100%", 
-                      boxSizing: "border-box",
-                      borderColor: phoneNumber.length > 0 && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))) ? "#f59e0b" : undefined
-                    }}
-                  />
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      className="setup-input"
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => {
+                        // Strip all non-digit characters (handles paste with spaces, dashes, +, etc.)
+                        const value = e.target.value.replace(/\D/g, "");
+                        setPhoneNumber(value.slice(0, 12));
+                      }}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        const pastedText = e.clipboardData.getData("text");
+                        // Strip all non-digit characters from pasted content
+                        const digits = pastedText.replace(/\D/g, "");
+                        // If pasted number starts with 0, convert to 254 format
+                        let cleanNumber = digits;
+                        if (digits.startsWith("0") && digits.length >= 10) {
+                          cleanNumber = "254" + digits.slice(1);
+                        }
+                        setPhoneNumber(cleanNumber.slice(0, 12));
+                      }}
+                      placeholder="e.g., 254712345678"
+                      disabled={isBusy}
+                      maxLength={12}
+                      style={{ 
+                        flex: 1,
+                        maxWidth: "100%", 
+                        boxSizing: "border-box",
+                        borderColor: phoneNumber.length > 0 && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))) ? "#f59e0b" : undefined
+                      }}
+                    />
+                    {"contacts" in navigator && "ContactsManager" in window && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            // @ts-expect-error - Contact Picker API types not in standard TypeScript
+                            const contacts = await navigator.contacts.select(
+                              ["tel"],
+                              { multiple: false }
+                            );
+                            if (contacts && contacts.length > 0 && contacts[0].tel && contacts[0].tel.length > 0) {
+                              const tel = contacts[0].tel[0];
+                              // Clean the phone number
+                              const digits = tel.replace(/\D/g, "");
+                              let cleanNumber = digits;
+                              // Convert local format to international
+                              if (digits.startsWith("0") && digits.length >= 10) {
+                                cleanNumber = "254" + digits.slice(1);
+                              }
+                              // Remove leading country code duplicates (e.g., +254254...)
+                              if (cleanNumber.startsWith("254254")) {
+                                cleanNumber = cleanNumber.slice(3);
+                              }
+                              setPhoneNumber(cleanNumber.slice(0, 12));
+                            }
+                          } catch (err) {
+                            // User cancelled or API not available
+                            console.log("Contact picker cancelled or not available:", err);
+                          }
+                        }}
+                        disabled={isBusy}
+                        style={{
+                          padding: "8px 12px",
+                          border: "1px solid var(--border)",
+                          borderRadius: "6px",
+                          backgroundColor: "var(--bg-secondary, #f5f5f5)",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          fontSize: "13px",
+                          whiteSpace: "nowrap",
+                        }}
+                        title="Select from contacts"
+                      >
+                        📇
+                        <span style={{ display: "none" }} className="contact-btn-text">Contacts</span>
+                      </button>
+                    )}
+                  </div>
                   <div style={{ marginTop: "4px", fontSize: "12px", color: phoneNumber.length > 0 && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))) ? "#f59e0b" : "var(--text-secondary, #666)" }}>
                     {phoneNumber.length === 0 
                       ? "Enter recipient's phone number (e.g., 254712345678)"
