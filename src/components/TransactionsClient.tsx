@@ -20,6 +20,7 @@ type MetadataEntry = {
 type Category = {
   id: string;
   name: string;
+  isLinked: boolean;
 };
 
 type Transfer = {
@@ -144,6 +145,13 @@ export default function TransactionsClient({
 
   // Filter accounts by selected category
   const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
+  
+  // Check if the selected category is linked to a payment integration
+  const selectedCategory = categories.find((cat) => cat.id === selectedCategoryId);
+  const isCategoryLinked = selectedCategory?.isLinked ?? false;
+  
+  // Get the external account (if exists)
+  const externalAccount = externalAccountId ? accounts.find((acc) => acc.id === externalAccountId) : undefined;
 
   function handleCategoryChange(categoryId: string) {
     setSelectedCategoryId(categoryId);
@@ -1103,6 +1111,12 @@ export default function TransactionsClient({
                         </option>
                       );
                     })}
+                  {/* Show external account for categories that are NOT linked to a payment integration */}
+                  {!isCategoryLinked && externalAccount && modalMode === "manual" && externalAccount.id !== toAccountId && (
+                    <option key={externalAccount.id} value={externalAccount.id}>
+                      {externalAccount.name} (External)
+                    </option>
+                  )}
                 </select>
               </div>
 

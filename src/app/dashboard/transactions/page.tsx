@@ -51,15 +51,19 @@ export default async function TransactionsPage({
   };
 
   let accountsData;
-  let categoriesData: { id: string; name: string }[] = [];
+  let categoriesData: { id: string; name: string; isLinked: boolean }[] = [];
   let transfersData: Transfer[] = [];
 
   try {
     const { token } = await auth0.getAccessToken(accessTokenOptions);
     accountsData = await listAllAccounts({ accessToken: token });
 
-    // Fetch categories
-    const categoriesQuery = "SELECT id, name FROM category WHERE parent_id = NONE;";
+    // Fetch categories with payment integration link status
+    const categoriesQuery = `
+      SELECT id, name, fn::category_linked_payment_integration(id) AS is_linked 
+      FROM category 
+      WHERE parent_id = NONE;
+    `;
     const categoriesResult = await executeSurrealQL({
       token,
       query: categoriesQuery,
@@ -67,11 +71,12 @@ export default async function TransactionsPage({
     });
 
     if (categoriesResult.success) {
-      const categoriesRaw = getResultArray<{ id?: unknown; name?: unknown }>(categoriesResult.data[0]);
+      const categoriesRaw = getResultArray<{ id?: unknown; name?: unknown; is_linked?: unknown }>(categoriesResult.data[0]);
       categoriesData = categoriesRaw
         .map((c) => ({
           id: thingIdToString(c.id) || "",
           name: typeof c.name === "string" ? c.name : "(Unnamed)",
+          isLinked: c.is_linked === true,
         }))
         .filter((c) => c.id);
     }
