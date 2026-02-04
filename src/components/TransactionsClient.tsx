@@ -122,6 +122,7 @@ export default function TransactionsClient({
   const [description, setDescription] = useState("");
   const [label, setLabel] = useState("");
   const [transactionDate, setTransactionDate] = useState("");
+  const [transactionTime, setTransactionTime] = useState("");
   const [submitDraft, setSubmitDraft] = useState(true);
   
   // Account balances (preloaded in background on mount)
@@ -215,7 +216,10 @@ export default function TransactionsClient({
     setTransferType("payment");
     setDescription("");
     setLabel("");
-    setTransactionDate(new Date().toISOString().split("T")[0]); // Default to today
+    // Set current date and time
+    const now = new Date();
+    setTransactionDate(now.toISOString().split("T")[0]); // Default to today
+    setTransactionTime(now.toTimeString().slice(0, 5)); // Current time in HH:MM format
     setCustomMetadata([]);
     setExtMetaId("");
     setExtMetaName("");
@@ -279,10 +283,13 @@ export default function TransactionsClient({
     setIsBusy(true);
 
     try {
-      // Convert date to ISO string with time at midnight UTC if provided
+      // Combine date and time into ISO string
       let createdAt: string | undefined;
       if (transactionDate) {
-        createdAt = new Date(transactionDate + "T00:00:00.000Z").toISOString();
+        const timeToUse = transactionTime || "00:00";
+        // Parse date and time in local timezone, then convert to ISO
+        const localDateTime = new Date(`${transactionDate}T${timeToUse}:00`);
+        createdAt = localDateTime.toISOString();
       }
 
       // Build metadata object
@@ -1359,18 +1366,28 @@ export default function TransactionsClient({
               {modalMode === "manual" && (
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-                    Transaction Date
+                    Transaction Date & Time
                   </label>
-                  <input
-                    className="setup-input"
-                    type="date"
-                    value={transactionDate}
-                    onChange={(e) => setTransactionDate(e.target.value)}
-                    disabled={isBusy}
-                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
-                  />
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      className="setup-input"
+                      type="date"
+                      value={transactionDate}
+                      onChange={(e) => setTransactionDate(e.target.value)}
+                      disabled={isBusy}
+                      style={{ flex: 1, boxSizing: "border-box" }}
+                    />
+                    <input
+                      className="setup-input"
+                      type="time"
+                      value={transactionTime}
+                      onChange={(e) => setTransactionTime(e.target.value)}
+                      disabled={isBusy}
+                      style={{ width: "120px", boxSizing: "border-box" }}
+                    />
+                  </div>
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                    When did this transaction occur? Defaults to today.
+                    When did this transaction occur? Defaults to current date and time.
                   </div>
                 </div>
               )}
