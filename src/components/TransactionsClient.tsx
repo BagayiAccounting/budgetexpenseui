@@ -164,19 +164,35 @@ export default function TransactionsClient({
     setSelectedAccountId(accountId);
   }
 
-  // Fetch account balances (can be called on demand or preloaded)
+  // Fetch account balances using batch API (can be called on demand or preloaded)
   const fetchAccountBalances = useCallback(async () => {
     if (loadingBalances || balancesLoaded) return;
+    if (accounts.length === 0) {
+      setBalancesLoaded(true);
+      return;
+    }
+    
     setLoadingBalances(true);
     try {
-      const res = await fetch("/api/settings/accounts?withBalances=true");
+      // Use the batch balances API with fn::tb_accounts
+      const accountIds = accounts.map((acc) => acc.id);
+      const res = await fetch("/api/settings/balances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountIds }),
+      });
+      
       if (res.ok) {
         const data = await res.json();
-        if (data.accounts) {
+        if (data.balances) {
           const balances: Record<string, string> = {};
-          for (const acc of data.accounts) {
-            if (acc.balance) {
-              balances[acc.id] = acc.balance;
+          // data.balances is a map of accountId -> TbAccount
+          for (const [accountId, tbAccount] of Object.entries(data.balances)) {
+            if (tbAccount && typeof tbAccount === "object") {
+              const tb = tbAccount as { book_balance?: string };
+              if (tb.book_balance) {
+                balances[accountId] = tb.book_balance;
+              }
             }
           }
           setAccountBalances(balances);
@@ -188,7 +204,7 @@ export default function TransactionsClient({
     } finally {
       setLoadingBalances(false);
     }
-  }, [loadingBalances, balancesLoaded]);
+  }, [loadingBalances, balancesLoaded, accounts]);
 
   // Preload account balances in background when component mounts
   useEffect(() => {
