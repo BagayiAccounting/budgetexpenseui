@@ -674,6 +674,48 @@ export default function TransactionsClient({
             ))}
           </select>
         </div>
+
+        {/* Selected Account Balance */}
+        {selectedAccountId && (
+          <div style={{ 
+            flex: "1", 
+            minWidth: "150px", 
+            maxWidth: "200px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-end",
+          }}>
+            <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+              Balance
+            </label>
+            <div style={{ 
+              padding: "10px 12px",
+              backgroundColor: "var(--bg-secondary, #f5f5f5)",
+              borderRadius: "8px",
+              fontFamily: "monospace",
+              fontSize: "16px",
+              fontWeight: 600,
+              textAlign: "right",
+            }}>
+              {loadingBalances ? (
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: "80px",
+                    height: "18px",
+                    backgroundColor: "var(--bg-hover, #e5e5e5)",
+                    borderRadius: "4px",
+                    animation: "pulse 1.5s ease-in-out infinite",
+                  }}
+                />
+              ) : accountBalances[selectedAccountId] ? (
+                formatBalance(accountBalances[selectedAccountId])
+              ) : (
+                "-"
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="panel">
