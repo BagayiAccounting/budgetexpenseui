@@ -71,12 +71,14 @@ export async function listCategoriesWithAccounts(options: {
   const { accessToken } = options;
   if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
 
-  const query = "SELECT * FROM category; SELECT *, fn::tb_account(id) AS tb_account FROM account;";
+  // Query WITHOUT TigerBeetle balances for fast initial load
+  // Balances will be fetched separately using fn::tb_accounts batch call
+  const query = "SELECT * FROM category; SELECT * FROM account;";
 
   const result = await executeSurrealQL({
     token: accessToken,
     query,
-    logName: "settingsService.POST /sql (list categories+accounts)",
+    logName: "settingsService.POST /sql (list categories+accounts - no balances)",
   });
 
   if (!result.success) {
@@ -307,3 +309,59 @@ export async function createSubCategory(options: {
 
   return { status: "created" };
 }
+
+// Batch fetch TigerBeetle balances for multiple accounts using fn::tb_accounts
+// Returns a map of account_id -> TbAccount
+export type AccountBalancesMap = Record<string, TbAccount>;
+
+export async function fetchAccountBalancesBatch(options: {
+  accessToken: string | undefined;
+  accountIds: string[];
+}): Promise<{ status: "ok"; balances: AccountBalancesMap } | { status: "skipped"; reason: string }> {
+  const { accessToken, accountIds } = options;
+  if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
+  if (!accountIds.length) return { status: "ok", balances: {} };
+
+  // Convert account IDs to SurrealDB thing literals
+  const accountLiterals = accountIds
+    .map((id) => toSurrealThingLiteral(id))
+    .filter(Boolean);
+
+  if (!accountLiterals.length) return { status: "ok", balances: {} };
+
+  // Use fn::tb_accounts to fetch all balances in one batch call
+  // The function takes an array of account IDs and returns a map of id -> balance info
+  const query = `RETURN fn::tb_accounts([${accountLiterals.join(", ")}]);`;
+
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query,
+    logName: "settingsService.POST /sql (batch fetch balances)",
+  });
+
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
+  }
+
+  // fn::tb_accounts returns an object/map where keys are account IDs and values are TbAccount objects
+  const responseData = result.data[0];
+  const balances: AccountBalancesMap = {};
+
+  if (responseData && typeof responseData === "object") {
+    // Handle the response - it could be the direct map or wrapped in a result
+    const balanceMap = (responseData as Record<string, unknown>).result ?? responseData;
+    
+    if (balanceMap && typeof balanceMap === "object") {
+      for (const [key, value] of Object.entries(balanceMap as Record<string, unknown>)) {
+        const tbAccount = asTbAccount(value);
+        if (tbAccount) {
+          // The key might be the full thing ID (e.g., "account:xyz") or just the ID
+          balances[key] = tbAccount;
+        }
+      }
+    }
+  }
+
+  return { status: "ok", balances };
+}
+

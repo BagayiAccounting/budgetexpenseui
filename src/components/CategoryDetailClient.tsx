@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { TbAccount } from "@/lib/settingsService";
+import type { TbAccount, AccountBalancesMap } from "@/lib/settingsService";
 import { rowsFromTbAccount } from "@/lib/accountUtils";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
@@ -39,9 +39,11 @@ type MpesaIntegration = {
   b2cPaybill?: string;
 };
 
-export default function CategoryDetailClient({ category }: { category: Category }) {
+export default function CategoryDetailClient({ category: initialCategory }: { category: Category }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [balances, setBalances] = useState<AccountBalancesMap>({});
+  const [balancesLoading, setBalancesLoading] = useState(true);
   const [modalType, setModalType] = useState<ModalType>(null);
   const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
@@ -52,6 +54,82 @@ export default function CategoryDetailClient({ category }: { category: Category 
   const [accountType, setAccountType] = useState<AccountType>("asset");
   const [subcategoryName, setSubcategoryName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+
+  // Collect all account IDs from the category tree
+  const collectAccountIds = useCallback((cat: Category): string[] => {
+    const ids: string[] = [];
+    function traverse(c: Category) {
+      for (const account of c.accounts) {
+        ids.push(account.id);
+      }
+      for (const sub of c.subcategories) {
+        traverse(sub);
+      }
+    }
+    traverse(cat);
+    return ids;
+  }, []);
+
+  // Merge balances into category
+  const category = useMemo(() => {
+    function enrichCategory(cat: Category): Category {
+      return {
+        ...cat,
+        accounts: cat.accounts.map((account) => {
+          const tbAccount = balances[account.id] || balances[`account:${account.id.split(":")[1]}`];
+          return {
+            ...account,
+            tbAccount: tbAccount || account.tbAccount,
+          };
+        }),
+        subcategories: cat.subcategories.map(enrichCategory),
+      };
+    }
+    return enrichCategory(initialCategory);
+  }, [initialCategory, balances]);
+
+  // Fetch balances asynchronously on mount
+  useEffect(() => {
+    const accountIds = collectAccountIds(initialCategory);
+    if (accountIds.length === 0) {
+      setBalancesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchBalances() {
+      try {
+        const res = await fetch("/api/settings/balances", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountIds }),
+        });
+
+        if (!res.ok) {
+          console.error("[CategoryDetailClient] Failed to fetch balances:", res.status);
+          return;
+        }
+
+        const data = await res.json();
+        if (!cancelled && data.balances) {
+          setBalances(data.balances);
+        }
+      } catch (err) {
+        console.error("[CategoryDetailClient] Error fetching balances:", err);
+      } finally {
+        if (!cancelled) {
+          setBalancesLoading(false);
+        }
+      }
+    }
+
+    void fetchBalances();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCategory, collectAccountIds]);
   
   // M-Pesa integration states
   const [mpesaIntegration, setMpesaIntegration] = useState<MpesaIntegration | null>(null);

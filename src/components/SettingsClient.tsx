@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { TbAccount } from "@/lib/settingsService";
+import type { TbAccount, AccountBalancesMap } from "@/lib/settingsService";
 import { rowsFromTbAccount } from "@/lib/accountUtils";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
@@ -18,9 +18,11 @@ type Category = {
 
 type ModalType = "account" | "subcategory" | "category" | null;
 
-export default function SettingsClient({ categories }: { categories: Category[] }) {
+export default function SettingsClient({ categories: initialCategories }: { categories: Category[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [balances, setBalances] = useState<AccountBalancesMap>({});
+  const [balancesLoading, setBalancesLoading] = useState(true);
   const [modalType, setModalType] = useState<ModalType>(null);
   const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
@@ -30,6 +32,84 @@ export default function SettingsClient({ categories }: { categories: Category[] 
   const [accountType, setAccountType] = useState<AccountType>("asset");
   const [subcategoryName, setSubcategoryName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+
+  // Collect all account IDs from the category tree
+  const collectAccountIds = useCallback((cats: Category[]): string[] => {
+    const ids: string[] = [];
+    function traverse(cat: Category) {
+      for (const account of cat.accounts) {
+        ids.push(account.id);
+      }
+      for (const sub of cat.subcategories) {
+        traverse(sub);
+      }
+    }
+    for (const cat of cats) {
+      traverse(cat);
+    }
+    return ids;
+  }, []);
+
+  // Merge balances into categories
+  const categories = useMemo(() => {
+    function enrichCategory(cat: Category): Category {
+      return {
+        ...cat,
+        accounts: cat.accounts.map((account) => {
+          const tbAccount = balances[account.id] || balances[`account:${account.id.split(":")[1]}`];
+          return {
+            ...account,
+            tbAccount: tbAccount || account.tbAccount,
+          };
+        }),
+        subcategories: cat.subcategories.map(enrichCategory),
+      };
+    }
+    return initialCategories.map(enrichCategory);
+  }, [initialCategories, balances]);
+
+  // Fetch balances asynchronously on mount
+  useEffect(() => {
+    const accountIds = collectAccountIds(initialCategories);
+    if (accountIds.length === 0) {
+      setBalancesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchBalances() {
+      try {
+        const res = await fetch("/api/settings/balances", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountIds }),
+        });
+
+        if (!res.ok) {
+          console.error("[SettingsClient] Failed to fetch balances:", res.status);
+          return;
+        }
+
+        const data = await res.json();
+        if (!cancelled && data.balances) {
+          setBalances(data.balances);
+        }
+      } catch (err) {
+        console.error("[SettingsClient] Error fetching balances:", err);
+      } finally {
+        if (!cancelled) {
+          setBalancesLoading(false);
+        }
+      }
+    }
+
+    void fetchBalances();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCategories, collectAccountIds]);
 
   const hasAny = useMemo(() => categories.length > 0, [categories.length]);
 
@@ -134,7 +214,10 @@ export default function SettingsClient({ categories }: { categories: Category[] 
     }
   }
 
-  function getDefaultAccountBalance(cat: Category): string {
+  function getDefaultAccountBalance(cat: Category): string | null {
+    // Return null to indicate loading state
+    if (balancesLoading) return null;
+    
     const defaultAccount = cat.accounts.find(a => a.id === cat.defaultAccountId);
     if (!defaultAccount?.tbAccount) return "-";
     
@@ -167,7 +250,22 @@ export default function SettingsClient({ categories }: { categories: Category[] 
         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
       >
         <td style={{ padding: "16px", fontWeight: 500 }}>{cat.name}</td>
-        <td style={{ padding: "16px", textAlign: "right", fontFamily: "monospace" }}>{balance}</td>
+        <td style={{ padding: "16px", textAlign: "right", fontFamily: "monospace" }}>
+          {balance === null ? (
+            <span
+              style={{
+                display: "inline-block",
+                width: "60px",
+                height: "16px",
+                backgroundColor: "var(--bg-hover, #e5e5e5)",
+                borderRadius: "4px",
+                animation: "pulse 1.5s ease-in-out infinite",
+              }}
+            />
+          ) : (
+            balance
+          )}
+        </td>
         <td style={{ padding: "16px", textAlign: "center" }}>{cat.accounts.length}</td>
         <td style={{ padding: "16px", textAlign: "center" }}>{totalSubcategories}</td>
         <td style={{ padding: "16px", textAlign: "right" }}>
