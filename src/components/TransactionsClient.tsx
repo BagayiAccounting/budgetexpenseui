@@ -21,6 +21,7 @@ type Category = {
   id: string;
   name: string;
   isLinked: boolean;
+  defaultAccountId?: string;
 };
 
 type Transfer = {
@@ -146,6 +147,56 @@ export default function TransactionsClient({
 
   // Filter accounts by selected category
   const categoryAccounts = accounts.filter((acc) => acc.categoryId === selectedCategoryId);
+  
+  // Get from and to account objects
+  const fromAccount = accounts.find((acc) => acc.id === fromAccountId);
+  const toAccount = accounts.find((acc) => acc.id === toAccountId);
+  
+  // Get from and to categories
+  // For from category, look up by the account's categoryId
+  const fromCategory = categories.find((cat) => cat.id === fromAccount?.categoryId);
+  
+  // For to category, we need to find which root category the target account belongs to
+  // This is the category that has this account as its defaultAccountId (for cross-category transfers)
+  // or the account's direct category (for same-category transfers)
+  const toCategory = (() => {
+    if (!toAccount) return undefined;
+    // First check if this account IS a default account of a root category
+    const categoryWithThisDefault = categories.find((cat) => cat.defaultAccountId === toAccount.id);
+    if (categoryWithThisDefault) return categoryWithThisDefault;
+    // Otherwise, look up by the account's categoryId
+    return categories.find((cat) => cat.id === toAccount.categoryId);
+  })();
+  
+  // Check if transfer requires payment channel (cross-category transfer)
+  // This is needed when:
+  // 1. Both accounts exist
+  // 2. They are in different ROOT categories (different category hierarchies)
+  // 3. The from category is NOT linked to a payment integration (if linked, use mpesa channels)
+  // 
+  // When transferring between accounts in different category hierarchies,
+  // we must use payment_channel with bagayi_inter_switch instead of to_account_id
+  const requiresPaymentChannel = (() => {
+    if (!fromAccount || !toAccount) return false;
+    if (fromAccount.categoryId === toAccount.categoryId) return false;
+    if (involvesExternalAccount) return false; // External account transfers don't require payment channel
+    
+    // If from category is linked to payment integration, use the integration's payment channels
+    // (like BusinessPayment, BusinessBuyGoods) - not bagayi_inter_switch
+    if (fromCategory?.isLinked) return false;
+    
+    // For all other cross-category transfers (from unlinked category to any other category),
+    // we need bagayi_inter_switch payment channel
+    return true;
+  })();
+  
+  // Check if cross-category transfer is to a linked category
+  // This requires external_transaction_id for reconciliation
+  const requiresExternalTransactionId = (() => {
+    if (!requiresPaymentChannel) return false;
+    // If the target category is linked to any payment integration, external_transaction_id is required
+    return toCategory?.isLinked === true;
+  })();
   
   // Check if the selected category is linked to a payment integration
   const selectedCategory = categories.find((cat) => cat.id === selectedCategoryId);
@@ -339,21 +390,53 @@ export default function TransactionsClient({
         }
       }
 
+      // Build the request body based on transfer type
+      type TransferRequestBody = {
+        fromAccountId: string;
+        toAccountId?: string;
+        amount: number;
+        type: TransferType;
+        status: string;
+        description?: string;
+        label?: string;
+        createdAt?: string;
+        metadata?: Record<string, unknown>;
+        externalTransactionId?: string;
+        paymentChannel?: {
+          channelId: string;
+          toAccount: string;
+        };
+      };
+      
+      const requestBody: TransferRequestBody = {
+        fromAccountId,
+        amount: numAmount,
+        type: transferType,
+        status: submitDraft ? "submitted" : "draft",
+        description: description.trim() || undefined,
+        label: label.trim() || undefined,
+        createdAt,
+        metadata,
+        // Include externalTransactionId for: external account transfers OR cross-category transfers to linked categories
+        externalTransactionId: (involvesExternalAccount || requiresExternalTransactionId) && externalTransactionId.trim() ? externalTransactionId.trim() : undefined,
+      };
+      
+      // If transfer requires payment_channel (cross-category to linked category)
+      if (requiresPaymentChannel && toAccountId) {
+        // Use bagayi_inter_switch channel to route to external payment integration
+        requestBody.paymentChannel = {
+          channelId: "bagayi_inter_switch",
+          toAccount: toAccountId,
+        };
+        // Don't set toAccountId when using payment_channel
+      } else {
+        requestBody.toAccountId = toAccountId;
+      }
+
       const res = await fetch("/api/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromAccountId,
-          toAccountId,
-          amount: numAmount,
-          type: transferType,
-          status: submitDraft ? "submitted" : "draft",
-          description: description.trim() || undefined,
-          label: label.trim() || undefined,
-          createdAt,
-          metadata,
-          externalTransactionId: involvesExternalAccount && externalTransactionId.trim() ? externalTransactionId.trim() : undefined,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json().catch(() => null);
@@ -1198,21 +1281,98 @@ export default function TransactionsClient({
                     style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   >
                     <option value="">Select account</option>
-                    {accounts
-                      .filter((acc) => acc.id !== fromAccountId)
-                      .map((acc) => {
-                        const isExternal = externalAccountId && acc.id === externalAccountId;
-                        const balance = accountBalances[acc.id];
-                        return (
-                          <option key={acc.id} value={acc.id}>
-                            {isExternal 
-                              ? acc.name 
-                              : `${acc.name} (${acc.categoryName})${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
-                            }
-                          </option>
-                        );
-                      })}
+                    {(() => {
+                      // Build a set of valid destination account IDs
+                      // For cross-category transfers, only default accounts of root categories are allowed
+                      const defaultAccountIds = new Set(
+                        categories
+                          .filter((cat) => cat.defaultAccountId)
+                          .map((cat) => cat.defaultAccountId!)
+                      );
+                      
+                      return accounts
+                        .filter((acc) => {
+                          // Never show the from account
+                          if (acc.id === fromAccountId) return false;
+                          
+                          // Always allow external account
+                          if (externalAccountId && acc.id === externalAccountId) return true;
+                          
+                          // If no from account selected yet, show all
+                          if (!fromCategory) return true;
+                          
+                          // Same category - always allowed
+                          if (acc.categoryId === fromCategory.id) return true;
+                          
+                          // From a linked category - only same category accounts are allowed
+                          // (cross-category uses mpesa payment channels, not bagayi_inter_switch)
+                          if (fromCategory.isLinked) {
+                            return acc.categoryId === fromCategory.id;
+                          }
+                          
+                          // Cross-category from unlinked: only default accounts of root categories
+                          return defaultAccountIds.has(acc.id);
+                        })
+                        .map((acc) => {
+                          const isExternal = externalAccountId && acc.id === externalAccountId;
+                          const balance = accountBalances[acc.id];
+                          const isDefaultAccount = defaultAccountIds.has(acc.id);
+                          const category = categories.find((cat) => cat.defaultAccountId === acc.id);
+                          
+                          return (
+                            <option key={acc.id} value={acc.id}>
+                              {isExternal 
+                                ? acc.name 
+                                : isDefaultAccount && category
+                                  ? `${category.name} (Default)${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
+                                  : `${acc.name} (${acc.categoryName})${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
+                              }
+                            </option>
+                          );
+                        });
+                    })()}
                   </select>
+                  {/* Show hint when cross-category transfer is detected */}
+                  {requiresPaymentChannel && toAccountId && (
+                    <div style={{ 
+                      marginTop: "6px", 
+                      padding: "8px 12px", 
+                      backgroundColor: requiresExternalTransactionId ? "#fef3c7" : "#dbeafe", 
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      color: requiresExternalTransactionId ? "#92400e" : "#1e40af"
+                    }}>
+                      {requiresExternalTransactionId 
+                        ? "⚠️ This transfer is to an M-Pesa linked category. External Transaction ID is required for reconciliation."
+                        : "ℹ️ This cross-category transfer will be routed via Bagayi InterSwitch"}
+                    </div>
+                  )}
+                  
+                  {/* External Transaction ID for cross-category transfers to linked categories */}
+                  {requiresExternalTransactionId && (
+                    <div style={{ marginTop: "12px" }}>
+                      <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                        External Transaction ID *
+                      </label>
+                      <input
+                        className="setup-input"
+                        type="text"
+                        value={externalTransactionId}
+                        onChange={(e) => setExternalTransactionId(e.target.value)}
+                        placeholder="e.g., M-Pesa receipt number, bank reference"
+                        disabled={isBusy}
+                        style={{ 
+                          width: "100%",
+                          maxWidth: "100%",
+                          boxSizing: "border-box",
+                          borderColor: !externalTransactionId.trim() ? "#f59e0b" : undefined
+                        }}
+                      />
+                      <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                        Required for reconciliation with the linked payment integration
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : modalMode === "buygoods" ? (
                 <div style={{ marginBottom: "16px" }}>
@@ -1693,6 +1853,7 @@ export default function TransactionsClient({
                     !amount ||
                     (modalMode === "manual" && !toAccountId) ||
                     (modalMode === "manual" && involvesExternalAccount && (!externalTransactionId.trim() || !extMetaId.trim() || !extMetaName.trim() || !extMetaType.trim())) ||
+                    (modalMode === "manual" && requiresExternalTransactionId && !externalTransactionId.trim()) ||
                     (modalMode === "buygoods" && !buyGoodsNumber.trim()) ||
                     (modalMode === "sendmoney" && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))))
                   }

@@ -113,10 +113,24 @@ export async function POST(req: NextRequest) {
     
     // Add payment_channel if provided
     if (paymentChannel) {
-      contentFields += `,\n  payment_channel: {
+      // For bagayi_inter_switch channel, to_account should be a record reference
+      if (paymentChannel.channelId === "bagayi_inter_switch") {
+        const toAccountLiteral = toSurrealThingLiteral(paymentChannel.toAccount);
+        if (toAccountLiteral) {
+          contentFields += `,\n  payment_channel: {
+    channel_id: ${JSON.stringify(paymentChannel.channelId)},
+    to_account: ${toAccountLiteral}
+  }`;
+        } else {
+          return NextResponse.json({ error: "Invalid to_account for bagayi_inter_switch channel", reason: "invalid_payment_channel_account" }, { status: 400 });
+        }
+      } else {
+        // For other channels (BusinessPayment, BusinessBuyGoods, etc.), to_account is a string
+        contentFields += `,\n  payment_channel: {
     channel_id: ${JSON.stringify(paymentChannel.channelId)},
     to_account: ${JSON.stringify(paymentChannel.toAccount)}
   }`;
+      }
     }
     
     // Add metadata if provided (for external account transfers)
