@@ -283,9 +283,13 @@ export default function TransactionsClient({
     setTransferType("payment");
     setDescription("");
     setLabel("");
-    // Set current date and time
+    // Set current date and time in local timezone
     const now = new Date();
-    setTransactionDate(now.toISOString().split("T")[0]); // Default to today
+    // Format date as YYYY-MM-DD in local timezone
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    setTransactionDate(`${year}-${month}-${day}`);
     setTransactionTime(now.toTimeString().slice(0, 5)); // Current time in HH:MM format
     setCustomMetadata([]);
     setExtMetaId("");
