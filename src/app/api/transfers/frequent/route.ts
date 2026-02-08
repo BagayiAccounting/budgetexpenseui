@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
-import { executeSurrealQL, getResultArray, toSurrealThingLiteral } from "@/lib/surrealdb";
+import { executeSurrealQL, getResultArray } from "@/lib/surrealdb";
 
 type FrequentRecipient = {
   toAccount: string;
@@ -39,18 +39,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "action parameter is required" }, { status: 400 });
     }
 
-    // Build category filter if provided
-    let categoryFilter = "";
-    if (categoryId) {
-      const categoryLiteral = toSurrealThingLiteral(categoryId);
-      if (categoryLiteral) {
-        categoryFilter = `AND from_account_id.category_id = ${categoryLiteral}`;
-      }
-    }
-
     // Query transfers with the specified payment channel action
     // Group by to_account (and account_reference for paybill)
     // Get the name from label or description
+    // NOTE: Temporarily removed category filter for debugging
     const query = `
       SELECT 
         payment_channel.to_account AS to_account,
@@ -59,18 +51,21 @@ export async function GET(req: NextRequest) {
         description,
         from_account_id,
         count() AS usage_count,
-        math::max(created_at) AS last_used
+        array::max(array::group(created_at)) AS last_used
       FROM transfer
       WHERE 
         payment_channel.channel_id = "MPESA" 
         AND payment_channel.action = ${JSON.stringify(action)}
-        ${categoryFilter}
       GROUP BY payment_channel.to_account, payment_channel.account_reference, from_account_id, label, description
       ORDER BY usage_count DESC
       LIMIT 50;
     `;
     
     console.log("Frequent recipients query:", query);
+    // Log categoryId for future re-enabling
+    if (categoryId) {
+      console.log("Category filter (currently disabled):", categoryId);
+    }
 
     const result = await executeSurrealQL({
       token,
