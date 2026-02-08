@@ -282,8 +282,95 @@ export async function GET(req: NextRequest) {
       recipients.sort((a, b) => b.count - a.count);
     }
 
-    // Limit to top 10
-    const finalRecipients = recipients.slice(0, 10);
+    // Also add most recent recipients that might not be in the frequent list
+    // Query for the 5 most recent unique recipients
+    const recentQuery = `
+      SELECT 
+        payment_channel.to_account AS to_account,
+        payment_channel.account_reference AS account_reference,
+        payment_channel,
+        label,
+        description,
+        from_account_id,
+        created_at
+      FROM transfer
+      WHERE 
+        payment_channel.channel_id = "MPESA" 
+        AND payment_channel.action = ${JSON.stringify(action)}
+      ORDER BY created_at DESC
+      LIMIT 20;
+    `;
+
+    const recentResult = await executeSurrealQL({
+      token,
+      query: recentQuery,
+      logName: "frequentRecipients.GET.recent",
+    });
+
+    if (recentResult.success) {
+      const recentData = getResultArray(recentResult.data[0]) as Array<{
+        to_account: string;
+        account_reference?: string;
+        payment_channel?: Record<string, unknown>;
+        label?: string;
+        description?: string;
+        from_account_id?: string;
+        created_at?: string;
+      }>;
+
+      // Add recent recipients that aren't already in the list
+      const existingKeys = new Set(
+        recipients.map((r) =>
+          action === "BusinessPayBill" ? `${r.toAccount}|${r.accountReference || ""}` : r.toAccount
+        )
+      );
+
+      for (const item of recentData) {
+        if (!item.to_account) continue;
+
+        const key =
+          action === "BusinessPayBill"
+            ? `${item.to_account}|${item.account_reference || ""}`
+            : item.to_account;
+
+        if (existingKeys.has(key)) continue;
+        existingKeys.add(key);
+
+        let name = "";
+        if (item.payment_channel) {
+          name = extractNameFromPaymentChannel(item.payment_channel, action);
+        }
+        if (!name) {
+          name = item.label || item.description || "";
+        }
+
+        recipients.push({
+          toAccount: item.to_account,
+          accountReference: item.account_reference,
+          name,
+          count: 1, // Recent but not frequent
+          fromAccountId: String(item.from_account_id || ""),
+          lastUsed: String(item.created_at || ""),
+        });
+      }
+    }
+
+    // Re-sort after adding recent recipients
+    if (currentAccountId) {
+      recipients.sort((a, b) => {
+        const aIsCurrentAccount = a.fromAccountId === currentAccountId;
+        const bIsCurrentAccount = b.fromAccountId === currentAccountId;
+
+        if (aIsCurrentAccount && !bIsCurrentAccount) return -1;
+        if (!aIsCurrentAccount && bIsCurrentAccount) return 1;
+        return b.count - a.count;
+      });
+    } else {
+      recipients.sort((a, b) => b.count - a.count);
+    }
+
+    // Limit to top 15 (increased from 10 to show more options)
+    const finalRecipients = recipients.slice(0, 15);
 
     return NextResponse.json({ recipients: finalRecipients });
   } catch (error) {
