@@ -138,12 +138,22 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Invalid to_account for bagayi_inter_switch channel", reason: "invalid_payment_channel_account" }, { status: 400 });
         }
       } else if (paymentChannel.channelId === "MPESA") {
-        // For MPESA channel, use new structure: channel_id: "MPESA", action: "BusinessPayment"|"BusinessBuyGoods", to_account: string
-        contentFields += `,\n  payment_channel: {
+        // For MPESA channel, use new structure: channel_id: "MPESA", action: "BusinessPayment"|"BusinessBuyGoods"|"BusinessPayBill", to_account: string
+        // BusinessPayBill also includes account_reference
+        if (paymentChannel.action === "BusinessPayBill" && paymentChannel.accountReference) {
+          contentFields += `,\n  payment_channel: {
+    channel_id: "MPESA",
+    action: ${JSON.stringify(paymentChannel.action)},
+    to_account: ${JSON.stringify(paymentChannel.toAccount)},
+    account_reference: ${JSON.stringify(paymentChannel.accountReference)}
+  }`;
+        } else {
+          contentFields += `,\n  payment_channel: {
     channel_id: "MPESA",
     action: ${JSON.stringify(paymentChannel.action)},
     to_account: ${JSON.stringify(paymentChannel.toAccount)}
   }`;
+        }
       } else {
         // For other channels, to_account is a string (legacy support)
         contentFields += `,\n  payment_channel: {

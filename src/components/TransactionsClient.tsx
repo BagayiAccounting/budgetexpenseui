@@ -152,7 +152,7 @@ export default function TransactionsClient({
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [showTransactionMenu, setShowTransactionMenu] = useState(false);
-  const [modalMode, setModalMode] = useState<"manual" | "buygoods" | "sendmoney">("manual");
+  const [modalMode, setModalMode] = useState<"manual" | "buygoods" | "sendmoney" | "paybill">("manual");
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
@@ -165,6 +165,8 @@ export default function TransactionsClient({
   const [fromAccountId, setFromAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
   const [buyGoodsNumber, setBuyGoodsNumber] = useState("");
+  const [paybillNumber, setPaybillNumber] = useState("");
+  const [accountReference, setAccountReference] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [displayAmount, setDisplayAmount] = useState("");
@@ -574,6 +576,57 @@ export default function TransactionsClient({
     }
   }
 
+  async function handlePaybillPayment() {
+    if (!fromAccountId || !paybillNumber.trim() || !accountReference.trim() || !amount) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setError("Amount must be a positive number");
+      return;
+    }
+
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromAccountId,
+          // No toAccountId for paybill
+          amount: numAmount,
+          type: transferType,
+          status: submitDraft ? "submitted" : "draft",
+          description: description.trim() || undefined,
+          label: label.trim() || undefined,
+          paymentChannel: {
+            channelId: "MPESA",
+            action: "BusinessPayBill",
+            toAccount: paybillNumber.trim(),
+            accountReference: accountReference.trim(),
+          },
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && (data.reason || data.error)) || "Failed to create paybill payment");
+        return;
+      }
+
+      closeModal();
+      router.refresh();
+    } catch {
+      setError("Failed to create paybill payment");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleSendMoney() {
     if (!fromAccountId || !phoneNumber.trim() || !amount) {
       setError("Please fill in all required fields");
@@ -781,6 +834,43 @@ export default function TransactionsClient({
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
               >
                 🛒 Pay via Buy Goods
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTransactionMenu(false);
+                  setModalMode("paybill");
+                  setShowModal(true);
+                  // If account filter is selected, pre-select it as From Account
+                  setFromAccountId(selectedAccountId || "");
+                  setPaybillNumber("");
+                  setAccountReference("");
+                  setAmount("");
+                  setDisplayAmount("");
+                  setTransferType("payment");
+                  setDescription("");
+                  setLabel("");
+                  setSubmitDraft(true);
+                  setError(null);
+                  // Lazy-load account balances
+                  void fetchAccountBalances();
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "12px 16px",
+                  textAlign: "left",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  color: "#000000",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                📋 Pay via Paybill
               </button>
             </div>
           )}
@@ -1330,7 +1420,7 @@ export default function TransactionsClient({
           >
             <div className="panel-header" style={{ flexShrink: 0 }}>
               <div className="panel-title">
-                {modalMode === "buygoods" ? "Pay via Buy Goods" : modalMode === "sendmoney" ? "M-Pesa Send Money" : "Record Transaction"}
+                {modalMode === "buygoods" ? "Pay via Buy Goods" : modalMode === "sendmoney" ? "M-Pesa Send Money" : modalMode === "paybill" ? "Pay via Paybill" : "Record Transaction"}
               </div>
             </div>
             <div style={{ 
@@ -1588,6 +1678,51 @@ export default function TransactionsClient({
                     Enter the merchant&apos;s till number
                   </div>
                 </div>
+              ) : modalMode === "paybill" ? (
+                <>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Paybill Number *
+                    </label>
+                    <input
+                      className="setup-input"
+                      type="text"
+                      value={paybillNumber}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Only allow digits
+                        if (/^\d*$/.test(value)) {
+                          setPaybillNumber(value);
+                        }
+                      }}
+                      placeholder="e.g., 247247"
+                      disabled={isBusy}
+                      maxLength={10}
+                      style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+                    />
+                    <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                      Enter the paybill number
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Account Reference *
+                    </label>
+                    <input
+                      className="setup-input"
+                      type="text"
+                      value={accountReference}
+                      onChange={(e) => setAccountReference(e.target.value)}
+                      placeholder="e.g., Invoice number, account number"
+                      disabled={isBusy}
+                      maxLength={50}
+                      style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
+                    />
+                    <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                      Enter the account reference for this payment
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
@@ -2034,7 +2169,9 @@ export default function TransactionsClient({
                       ? handleBuyGoodsPayment
                       : modalMode === "sendmoney"
                         ? handleSendMoney
-                        : handleCreateTransfer
+                        : modalMode === "paybill"
+                          ? handlePaybillPayment
+                          : handleCreateTransfer
                   }
                   disabled={
                     isBusy ||
@@ -2044,17 +2181,18 @@ export default function TransactionsClient({
                     (modalMode === "manual" && involvesExternalAccount && (!externalTransactionId.trim() || !extMetaId.trim() || !extMetaName.trim() || !extMetaType.trim())) ||
                     (modalMode === "manual" && requiresExternalTransactionId && !externalTransactionId.trim()) ||
                     (modalMode === "buygoods" && !buyGoodsNumber.trim()) ||
+                    (modalMode === "paybill" && (!paybillNumber.trim() || !accountReference.trim())) ||
                     (modalMode === "sendmoney" && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))))
                   }
                 >
                   {isBusy
-                    ? modalMode === "buygoods"
+                    ? modalMode === "buygoods" || modalMode === "paybill"
                       ? "Processing…"
                       : modalMode === "sendmoney"
                         ? "Sending…"
                         : "Creating…"
                     : submitDraft
-                      ? modalMode === "buygoods"
+                      ? modalMode === "buygoods" || modalMode === "paybill"
                         ? "Submit Payment"
                         : modalMode === "sendmoney"
                           ? "Send Money"
