@@ -194,6 +194,40 @@ export default function TransactionsClient({
   // For bagayi_inter_switch transfers to linked categories with b2c_paybill, user can choose which paybill
   const [selectedPaybillType, setSelectedPaybillType] = useState<"main" | "b2c">("main");
   
+  // Frequent recipients for M-Pesa payments
+  type FrequentRecipient = {
+    toAccount: string;
+    accountReference?: string;
+    name: string;
+    count: number;
+  };
+  const [frequentRecipients, setFrequentRecipients] = useState<FrequentRecipient[]>([]);
+  const [loadingFrequent, setLoadingFrequent] = useState(false);
+  
+  // Fetch frequent recipients based on payment action
+  const fetchFrequentRecipients = useCallback(async (action: "BusinessPayment" | "BusinessBuyGoods" | "BusinessPayBill") => {
+    setLoadingFrequent(true);
+    setFrequentRecipients([]);
+    try {
+      const params = new URLSearchParams({
+        action,
+        categoryId: selectedCategoryId,
+        ...(selectedAccountId ? { accountId: selectedAccountId } : {}),
+      });
+      const res = await fetch(`/api/transfers/frequent?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.recipients) {
+          setFrequentRecipients(data.recipients);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch frequent recipients:", err);
+    } finally {
+      setLoadingFrequent(false);
+    }
+  }, [selectedCategoryId, selectedAccountId]);
+  
   // Check if either from or to account is the external account
   const isFromExternalAccount = externalAccountId ? fromAccountId === externalAccountId : false;
   const isToExternalAccount = externalAccountId ? toAccountId === externalAccountId : false;
@@ -778,8 +812,9 @@ export default function TransactionsClient({
                   setLabel("");
                   setSubmitDraft(true);
                   setError(null);
-                  // Lazy-load account balances
+                  // Lazy-load account balances and frequent recipients
                   void fetchAccountBalances();
+                  void fetchFrequentRecipients("BusinessPayment");
                 }}
                 style={{
                   display: "block",
@@ -814,8 +849,9 @@ export default function TransactionsClient({
                   setLabel("");
                   setSubmitDraft(true);
                   setError(null);
-                  // Lazy-load account balances
+                  // Lazy-load account balances and frequent recipients
                   void fetchAccountBalances();
+                  void fetchFrequentRecipients("BusinessBuyGoods");
                 }}
                 style={{
                   display: "block",
@@ -852,8 +888,9 @@ export default function TransactionsClient({
                   setLabel("");
                   setSubmitDraft(true);
                   setError(null);
-                  // Lazy-load account balances
+                  // Lazy-load account balances and frequent recipients
                   void fetchAccountBalances();
+                  void fetchFrequentRecipients("BusinessPayBill");
                 }}
                 style={{
                   display: "block",
@@ -1677,6 +1714,47 @@ export default function TransactionsClient({
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
                     Enter the merchant&apos;s till number
                   </div>
+                  {/* Frequent Recipients */}
+                  {frequentRecipients.length > 0 && (
+                    <div style={{ marginTop: "12px" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-secondary, #666)", marginBottom: "6px" }}>
+                        Recent Merchants
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                        {frequentRecipients.map((r, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setBuyGoodsNumber(r.toAccount);
+                              if (r.name) setLabel(r.name);
+                            }}
+                            disabled={isBusy}
+                            style={{
+                              padding: "6px 12px",
+                              border: "1px solid var(--border)",
+                              borderRadius: "16px",
+                              backgroundColor: buyGoodsNumber === r.toAccount ? "#dcfce7" : "var(--bg-secondary, #f5f5f5)",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{r.toAccount}</span>
+                            {r.name && <span style={{ color: "var(--text-secondary, #666)" }}>· {r.name}</span>}
+                            <span style={{ color: "#9ca3af", fontSize: "10px" }}>({r.count})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {loadingFrequent && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                      Loading recent merchants...
+                    </div>
+                  )}
                 </div>
               ) : modalMode === "paybill" ? (
                 <>
@@ -1703,6 +1781,49 @@ export default function TransactionsClient({
                     <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
                       Enter the paybill number
                     </div>
+                    {/* Frequent Recipients */}
+                    {frequentRecipients.length > 0 && (
+                      <div style={{ marginTop: "12px" }}>
+                        <div style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-secondary, #666)", marginBottom: "6px" }}>
+                          Recent Paybills
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {frequentRecipients.map((r, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setPaybillNumber(r.toAccount);
+                                if (r.accountReference) setAccountReference(r.accountReference);
+                                if (r.name) setLabel(r.name);
+                              }}
+                              disabled={isBusy}
+                              style={{
+                                padding: "6px 12px",
+                                border: "1px solid var(--border)",
+                                borderRadius: "16px",
+                                backgroundColor: paybillNumber === r.toAccount && accountReference === (r.accountReference || "") ? "#dcfce7" : "var(--bg-secondary, #f5f5f5)",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{r.toAccount}</span>
+                              {r.accountReference && <span style={{ color: "#6366f1", fontSize: "11px" }}>#{r.accountReference}</span>}
+                              {r.name && <span style={{ color: "var(--text-secondary, #666)" }}>· {r.name}</span>}
+                              <span style={{ color: "#9ca3af", fontSize: "10px" }}>({r.count})</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {loadingFrequent && (
+                      <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                        Loading recent paybills...
+                      </div>
+                    )}
                   </div>
                   <div style={{ marginBottom: "16px" }}>
                     <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
@@ -1822,6 +1943,47 @@ export default function TransactionsClient({
                             : "✓ Valid phone number"
                     }
                   </div>
+                  {/* Frequent Recipients */}
+                  {frequentRecipients.length > 0 && (
+                    <div style={{ marginTop: "12px" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-secondary, #666)", marginBottom: "6px" }}>
+                        Recent Contacts
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                        {frequentRecipients.map((r, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setPhoneNumber(r.toAccount);
+                              if (r.name) setLabel(r.name);
+                            }}
+                            disabled={isBusy}
+                            style={{
+                              padding: "6px 12px",
+                              border: "1px solid var(--border)",
+                              borderRadius: "16px",
+                              backgroundColor: phoneNumber === r.toAccount ? "#dcfce7" : "var(--bg-secondary, #f5f5f5)",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{r.toAccount}</span>
+                            {r.name && <span style={{ color: "var(--text-secondary, #666)" }}>· {r.name}</span>}
+                            <span style={{ color: "#9ca3af", fontSize: "10px" }}>({r.count})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {loadingFrequent && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                      Loading recent contacts...
+                    </div>
+                  )}
                 </div>
               )}
 
