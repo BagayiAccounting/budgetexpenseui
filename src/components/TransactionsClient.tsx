@@ -486,7 +486,8 @@ export default function TransactionsClient({
           description: description.trim() || undefined,
           label: label.trim() || undefined,
           paymentChannel: {
-            channelId: "BusinessBuyGoods",
+            channelId: "MPESA",
+            action: "BusinessBuyGoods",
             toAccount: buyGoodsNumber.trim(),
           },
         }),
@@ -552,7 +553,8 @@ export default function TransactionsClient({
           description: description.trim() || undefined,
           label: label.trim() || undefined,
           paymentChannel: {
-            channelId: "BusinessPayment",
+            channelId: "MPESA",
+            action: "BusinessPayment",
             toAccount: phoneNumber.trim(),
           },
         }),
