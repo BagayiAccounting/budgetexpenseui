@@ -22,6 +22,11 @@ type Category = {
   name: string;
   isLinked: boolean;
   defaultAccountId?: string;
+  paymentIntegrationId?: string;
+  hasB2cPaybill?: boolean;
+  b2cPaybillId?: string;
+  paybillName?: string;
+  b2cPaybillName?: string;
 };
 
 type Transfer = {
@@ -52,7 +57,8 @@ const TRANSFER_TYPES = ["payment", "fees", "refund", "adjustment"] as const;
 type TransferType = (typeof TRANSFER_TYPES)[number];
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  // Use en-US locale for consistent formatting between server and client
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
 function formatBalance(balance?: string): string {
@@ -70,18 +76,26 @@ function formatDate(dateString: string): string {
   if (!dateString) return "";
   try {
     const date = new Date(dateString);
+    
+    // Use consistent UTC-based formatting to avoid hydration mismatches
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const timeStr = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor((today.getTime() - dateDay.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      // For today, show the time
-      return `Today ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+      return `Today ${timeStr}`;
     }
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays}d ago`;
 
-    return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    // Use consistent format: "Feb 8, 2026"
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   } catch {
     return dateString;
   }
@@ -139,6 +153,9 @@ export default function TransactionsClient({
   const [extMetaName, setExtMetaName] = useState("");
   const [extMetaType, setExtMetaType] = useState("");
   const [externalTransactionId, setExternalTransactionId] = useState("");
+  
+  // For bagayi_inter_switch transfers to linked categories with b2c_paybill, user can choose which paybill
+  const [selectedPaybillType, setSelectedPaybillType] = useState<"main" | "b2c">("main");
   
   // Check if either from or to account is the external account
   const isFromExternalAccount = externalAccountId ? fromAccountId === externalAccountId : false;
@@ -409,6 +426,7 @@ export default function TransactionsClient({
         paymentChannel?: {
           channelId: string;
           toAccount: string;
+          paymentIntegration?: string;
         };
       };
       
@@ -432,6 +450,19 @@ export default function TransactionsClient({
           channelId: "bagayi_inter_switch",
           toAccount: toAccountId,
         };
+        
+        // Add paymentIntegration if target category is linked
+        if (requiresExternalTransactionId && toCategory) {
+          // If target has b2c_paybill and user selected b2c, use b2c_paybill
+          // Otherwise use main integration
+          const integrationId = toCategory.hasB2cPaybill && selectedPaybillType === "b2c"
+            ? toCategory.b2cPaybillId
+            : toCategory.paymentIntegrationId;
+          
+          if (integrationId) {
+            requestBody.paymentChannel.paymentIntegration = integrationId;
+          }
+        }
         // Don't set toAccountId when using payment_channel
       } else {
         requestBody.toAccountId = toAccountId;
@@ -1376,6 +1407,78 @@ export default function TransactionsClient({
                       />
                       <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
                         Required for reconciliation with the linked payment integration
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Paybill Selection - Only show when target category has b2c_paybill */}
+                  {requiresExternalTransactionId && toCategory?.hasB2cPaybill && (
+                    <div style={{ marginTop: "12px" }}>
+                      <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                        Payment Integration
+                      </label>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <label style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          padding: "10px 14px",
+                          border: `2px solid ${selectedPaybillType === "main" ? "#22c55e" : "var(--border)"}`,
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          backgroundColor: selectedPaybillType === "main" ? "#f0fdf4" : "transparent",
+                          flex: 1,
+                          minWidth: "140px",
+                        }}>
+                          <input
+                            type="radio"
+                            name="paybillType"
+                            value="main"
+                            checked={selectedPaybillType === "main"}
+                            onChange={() => setSelectedPaybillType("main")}
+                            disabled={isBusy}
+                            style={{ marginRight: "8px" }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 500, fontSize: "13px" }}>
+                              {toCategory.paybillName || "Main Paybill"}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)" }}>
+                              Primary integration
+                            </div>
+                          </div>
+                        </label>
+                        <label style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          padding: "10px 14px",
+                          border: `2px solid ${selectedPaybillType === "b2c" ? "#22c55e" : "var(--border)"}`,
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          backgroundColor: selectedPaybillType === "b2c" ? "#f0fdf4" : "transparent",
+                          flex: 1,
+                          minWidth: "140px",
+                        }}>
+                          <input
+                            type="radio"
+                            name="paybillType"
+                            value="b2c"
+                            checked={selectedPaybillType === "b2c"}
+                            onChange={() => setSelectedPaybillType("b2c")}
+                            disabled={isBusy}
+                            style={{ marginRight: "8px" }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 500, fontSize: "13px" }}>
+                              {toCategory.b2cPaybillName || "B2C Paybill"}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)" }}>
+                              B2C integration
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                      <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                        Select which payment integration to use for this transfer
                       </div>
                     </div>
                   )}

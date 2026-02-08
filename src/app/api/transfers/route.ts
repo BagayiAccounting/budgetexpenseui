@@ -117,10 +117,23 @@ export async function POST(req: NextRequest) {
       if (paymentChannel.channelId === "bagayi_inter_switch") {
         const toAccountLiteral = toSurrealThingLiteral(paymentChannel.toAccount);
         if (toAccountLiteral) {
-          contentFields += `,\n  payment_channel: {
+          // Build payment integration reference if provided
+          const paymentIntegrationLiteral = paymentChannel.paymentIntegration 
+            ? toSurrealThingLiteral(paymentChannel.paymentIntegration)
+            : null;
+          
+          if (paymentIntegrationLiteral) {
+            contentFields += `,\n  payment_channel: {
+    channel_id: ${JSON.stringify(paymentChannel.channelId)},
+    to_account: ${toAccountLiteral},
+    payment_integration: ${paymentIntegrationLiteral}
+  }`;
+          } else {
+            contentFields += `,\n  payment_channel: {
     channel_id: ${JSON.stringify(paymentChannel.channelId)},
     to_account: ${toAccountLiteral}
   }`;
+          }
         } else {
           return NextResponse.json({ error: "Invalid to_account for bagayi_inter_switch channel", reason: "invalid_payment_channel_account" }, { status: 400 });
         }

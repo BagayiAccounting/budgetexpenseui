@@ -51,20 +51,34 @@ export default async function TransactionsPage({
   };
 
   let accountsData;
-  let categoriesData: { id: string; name: string; isLinked: boolean; defaultAccountId?: string }[] = [];
+  let categoriesData: { 
+    id: string; 
+    name: string; 
+    isLinked: boolean; 
+    defaultAccountId?: string; 
+    paymentIntegrationId?: string;
+    hasB2cPaybill?: boolean;
+    b2cPaybillId?: string;
+    paybillName?: string;
+    b2cPaybillName?: string;
+  }[] = [];
   let transfersData: Transfer[] = [];
 
   try {
     const { token } = await auth0.getAccessToken(accessTokenOptions);
     accountsData = await listAllAccounts({ accessToken: token });
 
-    // Fetch categories with payment integration link status and default account
+    // Fetch categories with payment integration link status, default account, and b2c_paybill info
     const categoriesQuery = `
       SELECT 
         id, 
         name, 
         default_account_id, 
-        fn::category_linked_payment_integration(id) AS payment_integration
+        fn::category_linked_payment_integration(id) AS payment_integration,
+        fn::category_linked_payment_integration(id).out AS integration_record,
+        fn::category_linked_payment_integration(id).out.b2c_paybill AS b2c_paybill,
+        fn::category_linked_payment_integration(id).out.paybill_name AS paybill_name,
+        fn::category_linked_payment_integration(id).out.b2c_paybill.paybill_name AS b2c_paybill_name
       FROM category 
       WHERE parent_id = NONE;
     `;
@@ -75,13 +89,27 @@ export default async function TransactionsPage({
     });
 
     if (categoriesResult.success) {
-      const categoriesRaw = getResultArray<{ id?: unknown; name?: unknown; payment_integration?: unknown; default_account_id?: unknown }>(categoriesResult.data[0]);
+      const categoriesRaw = getResultArray<{ 
+        id?: unknown; 
+        name?: unknown; 
+        payment_integration?: unknown; 
+        default_account_id?: unknown;
+        integration_record?: unknown;
+        b2c_paybill?: unknown;
+        paybill_name?: unknown;
+        b2c_paybill_name?: unknown;
+      }>(categoriesResult.data[0]);
       categoriesData = categoriesRaw
         .map((c) => ({
           id: thingIdToString(c.id) || "",
           name: typeof c.name === "string" ? c.name : "(Unnamed)",
           isLinked: c.payment_integration != null,
           defaultAccountId: thingIdToString(c.default_account_id) || undefined,
+          paymentIntegrationId: thingIdToString(c.integration_record) || undefined,
+          hasB2cPaybill: c.b2c_paybill != null,
+          b2cPaybillId: thingIdToString(c.b2c_paybill) || undefined,
+          paybillName: typeof c.paybill_name === "string" ? c.paybill_name : undefined,
+          b2cPaybillName: typeof c.b2c_paybill_name === "string" ? c.b2c_paybill_name : undefined,
         }))
         .filter((c) => c.id);
     }
