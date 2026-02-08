@@ -72,6 +72,41 @@ function formatBalance(balance?: string): string {
   }
 }
 
+// Extract balance from transfer metadata based on selected account
+function getTransferBalance(
+  transfer: Transfer,
+  selectedAccountId: string
+): string | null {
+  if (!transfer.metadata || !selectedAccountId) return null;
+  
+  const transferBalance = transfer.metadata.transfer_balance as Record<string, unknown> | undefined;
+  if (!transferBalance) return null;
+  
+  // Check if this account is the from or to account
+  const isFromAccount = transfer.fromAccountId === selectedAccountId;
+  const isToAccount = transfer.toAccountId === selectedAccountId;
+  
+  if (isFromAccount) {
+    const fromBalance = transferBalance.from_account_balance as Record<string, unknown> | undefined;
+    if (fromBalance?.book_balance) {
+      // Handle decimal format like "48000dec"
+      const balanceStr = String(fromBalance.book_balance);
+      const numericPart = balanceStr.replace(/dec$/i, "");
+      return numericPart;
+    }
+  } else if (isToAccount) {
+    const toBalance = transferBalance.to_account_balance as Record<string, unknown> | undefined;
+    if (toBalance?.book_balance) {
+      // Handle decimal format like "-236089dec"
+      const balanceStr = String(toBalance.book_balance);
+      const numericPart = balanceStr.replace(/dec$/i, "");
+      return numericPart;
+    }
+  }
+  
+  return null;
+}
+
 function formatDate(dateString: string): string {
   if (!dateString) return "";
   try {
@@ -864,6 +899,7 @@ export default function TransactionsClient({
               <div>Reference</div>
               <div>Status</div>
               <div className="table-amount">Amount</div>
+              {selectedAccountId && <div className="table-amount">Balance</div>}
             </div>
 
               {filteredTransfers.map((transfer) => (
@@ -913,6 +949,50 @@ export default function TransactionsClient({
                   </span>
                 </div>
                 <div className="table-amount" data-label="Amount">{formatNumber(transfer.amount)}</div>
+                {selectedAccountId && (
+                  <div 
+                    className="table-amount" 
+                    data-label="Balance" 
+                    style={{ 
+                      fontFamily: "monospace", 
+                      fontSize: "13px",
+                      backgroundColor: (() => {
+                        const balance = getTransferBalance(transfer, selectedAccountId);
+                        if (balance !== null) {
+                          const num = parseFloat(balance);
+                          if (!isNaN(num)) {
+                            return num >= 0 ? "#dcfce7" : "#fee2e2";
+                          }
+                        }
+                        return "transparent";
+                      })(),
+                      color: (() => {
+                        const balance = getTransferBalance(transfer, selectedAccountId);
+                        if (balance !== null) {
+                          const num = parseFloat(balance);
+                          if (!isNaN(num)) {
+                            return num >= 0 ? "#166534" : "#991b1b";
+                          }
+                        }
+                        return "var(--text-secondary, #666)";
+                      })(),
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {(() => {
+                      const balance = getTransferBalance(transfer, selectedAccountId);
+                      if (balance !== null) {
+                        const num = parseFloat(balance);
+                        if (!isNaN(num)) {
+                          return formatNumber(num);
+                        }
+                      }
+                      return "-";
+                    })()}
+                  </div>
+                )}
               </div>
             ))}
           </div>
