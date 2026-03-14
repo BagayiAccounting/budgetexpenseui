@@ -1,9 +1,40 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { ensureUserExists } from "@/lib/userService";
-import { createCategory, createSubCategory } from "@/lib/settingsService";
+import { createCategory, createSubCategory, listCategoriesWithAccounts } from "@/lib/settingsService";
 
 export const dynamic = "force-dynamic";
+
+// GET: List all categories
+export async function GET() {
+  const session = await auth0.getSession();
+  if (!session?.user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const audience = process.env.AUTH0_AUDIENCE || process.env.NEXT_PUBLIC_AUTH0_AUDIENCE;
+  const scope = process.env.AUTH0_SCOPE;
+  const accessTokenOptions = {
+    ...(audience ? { audience } : {}),
+    ...(scope ? { scope } : {}),
+  };
+
+  let token: string | undefined;
+  try {
+    const res = await auth0.getAccessToken(accessTokenOptions);
+    token = res.token;
+  } catch {
+    return NextResponse.json({ error: "token_error" }, { status: 500 });
+  }
+
+  const result = await listCategoriesWithAccounts({ accessToken: token });
+  
+  if (result.status !== "ok") {
+    return NextResponse.json({ error: result.reason }, { status: 500 });
+  }
+
+  return NextResponse.json({ categories: result.categories });
+}
 
 function extractFirstResultId(payload: unknown): string | undefined {
   if (!Array.isArray(payload) || payload.length === 0) return undefined;

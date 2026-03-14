@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ categoryId?: string }>;
+  searchParams: Promise<{ categoryId?: string; accountId?: string }>;
 }) {
   const session = await auth0.getSession();
   if (!session?.user) {
@@ -25,6 +25,7 @@ export default async function TransactionsPage({
 
   const params = await searchParams;
   const categoryId = params.categoryId;
+  const accountId = params.accountId;
 
   type Transfer = {
     id: string;
@@ -247,6 +248,7 @@ export default async function TransactionsPage({
       categories={categoriesData}
       transfers={transfersData}
       initialCategoryId={categoryId || null}
+      initialAccountId={accountId || null}
       externalAccountId={externalAccountId}
     />
   );

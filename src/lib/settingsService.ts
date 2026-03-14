@@ -39,7 +39,7 @@ export type CategoryWithAccounts = {
   name: string;
   parentId?: string;
   defaultAccountId?: string;
-  accounts: Array<{ id: string; name: string; tbAccount?: TbAccount }>;
+  accounts: Array<{ id: string; name: string; type?: string; tbAccount?: TbAccount }>;
   subcategories: CategoryWithAccounts[];
 };
 
@@ -124,11 +124,12 @@ export async function listCategoriesWithAccounts(options: {
   for (const a of accountsRaw) {
     const accountId = thingIdToString(a.id);
     const accountName = typeof a.name === "string" ? a.name : "(Unnamed account)";
+    const accountType = typeof a.type === "string" ? a.type : undefined;
     const categoryId = thingIdToString(a.category_id);
     if (!accountId || !categoryId) continue;
     const cat = byCategoryId.get(categoryId);
     if (!cat) continue;
-    cat.accounts.push({ id: accountId, name: accountName, tbAccount: asTbAccount(a.tb_account) });
+    cat.accounts.push({ id: accountId, name: accountName, type: accountType, tbAccount: asTbAccount(a.tb_account) });
   }
 
   function sortCategoryTree(node: CategoryWithAccounts) {

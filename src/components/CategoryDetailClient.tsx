@@ -16,7 +16,7 @@ type Category = {
   subcategories: Category[];
 };
 
-type ModalType = "account" | "subcategory" | "mpesa" | "link-mpesa" | "add-user" | null;
+type ModalType = "account" | "subcategory" | "mpesa" | "link-mpesa" | "add-user" | "migrate-mpesa" | "rename-account" | null;
 
 type CategoryUser = {
   id: string;
@@ -132,8 +132,9 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
     };
   }, [initialCategory, collectAccountIds]);
   
-  // M-Pesa integration states
-  const [mpesaIntegration, setMpesaIntegration] = useState<MpesaIntegration | null>(null);
+  // M-Pesa integration states - now supports multiple integrations per category
+  const [mpesaIntegrations, setMpesaIntegrations] = useState<MpesaIntegration[]>([]);
+  const [editingIntegration, setEditingIntegration] = useState<MpesaIntegration | null>(null);
   const [loadingMpesa, setLoadingMpesa] = useState(false);
   const [businessShortCode, setBusinessShortCode] = useState("");
   const [paybillName, setPaybillName] = useState("");
@@ -162,21 +163,31 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserRole, setNewUserRole] = useState<"viewer" | "editor" | "admin">("viewer");
 
-  // Function to load M-Pesa integration
-  const loadMpesaIntegration = async () => {
+  // Migration states
+  const [migratingIntegration, setMigratingIntegration] = useState<MpesaIntegration | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [targetCategoryId, setTargetCategoryId] = useState("");
+  const [migrationConflicts, setMigrationConflicts] = useState<Array<{ id: string; currentName: string }>>([]);
+  const [migrationAccounts, setMigrationAccounts] = useState<Array<{ id: string; name: string }>>([]);
+  const [accountRenames, setAccountRenames] = useState<Record<string, string>>({});
+  const [checkingMigration, setCheckingMigration] = useState(false);
+  const [migrationHasB2c, setMigrationHasB2c] = useState(false);
+
+  // Rename account states
+  const [renamingAccount, setRenamingAccount] = useState<{ id: string; name: string } | null>(null);
+  const [newAccountName, setNewAccountName] = useState("");
+
+  // Function to load M-Pesa integrations (multiple per category)
+  const loadMpesaIntegrations = async () => {
     setLoadingMpesa(true);
     try {
       const res = await fetch(`/api/settings/mpesa?categoryId=${encodeURIComponent(category.id)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.integrations && data.integrations.length > 0) {
-          setMpesaIntegration(data.integrations[0]);
-        } else {
-          setMpesaIntegration(null);
-        }
+        setMpesaIntegrations(data.integrations || []);
       }
     } catch (err) {
-      console.error("Failed to load M-Pesa integration:", err);
+      console.error("Failed to load M-Pesa integrations:", err);
     } finally {
       setLoadingMpesa(false);
     }
@@ -307,9 +318,9 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
     }
   };
 
-  // Load M-Pesa integration and link on mount
+  // Load M-Pesa integrations and link on mount
   useEffect(() => {
-    void loadMpesaIntegration();
+    void loadMpesaIntegrations();
     void loadMpesaLink();
     void loadCategoryUsers();
   }, [category.id]);
@@ -335,24 +346,24 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         console.error("Failed to load available paybills:", err);
       }
       
-      // If integration exists, pre-fill the form
-      if (mpesaIntegration) {
-        setBusinessShortCode(mpesaIntegration.businessShortCode || "");
-        setPaybillName(mpesaIntegration.paybillName || "");
+      // If editing an existing integration, pre-fill the form
+      if (editingIntegration) {
+        setBusinessShortCode(editingIntegration.businessShortCode || "");
+        setPaybillName(editingIntegration.paybillName || "");
         // Pre-fill initiatorName (returned from API)
-        setInitiatorName(mpesaIntegration.initiatorName || "");
+        setInitiatorName(editingIntegration.initiatorName || "");
         // Security credential: show placeholder if exists, empty if new
-        setSecurityCredential(mpesaIntegration.hasSecurityCredential ? "••••••••" : "");
+        setSecurityCredential(editingIntegration.hasSecurityCredential ? "••••••••" : "");
         // Consumer credentials: show placeholder if editing (we assume they exist)
         setConsumerKey("•••••••••••••");
         setConsumerSecret("•••••••••••••");
         // B2C Paybill: pre-fill if exists
-        setB2cPaybillId(mpesaIntegration.b2cPaybill || "");
+        setB2cPaybillId(editingIntegration.b2cPaybill || "");
         setShouldCreateAccounts(false); // When editing, don't create new accounts
-        setUtilityAccountId(mpesaIntegration.utilityAccount || "");
-        setWorkingAccountId(mpesaIntegration.workingAccount || "");
-        setUnlinkedAccountId(mpesaIntegration.unlinkedAccount || "");
-        setLiabilityAccountId(mpesaIntegration.liabilityAccount || "");
+        setUtilityAccountId(editingIntegration.utilityAccount || "");
+        setWorkingAccountId(editingIntegration.workingAccount || "");
+        setUnlinkedAccountId(editingIntegration.unlinkedAccount || "");
+        setLiabilityAccountId(editingIntegration.liabilityAccount || "");
       } else {
         setBusinessShortCode("");
         setPaybillName("");
@@ -378,7 +389,168 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
     setModalCategoryId(null);
     setAccountName("");
     setSubcategoryName("");
+    setEditingIntegration(null);
+    setMigratingIntegration(null);
+    setTargetCategoryId("");
+    setMigrationConflicts([]);
+    setMigrationAccounts([]);
+    setAccountRenames({});
+    setMigrationHasB2c(false);
+    setRenamingAccount(null);
+    setNewAccountName("");
   }
+
+  // Rename account handler
+  const handleRenameAccount = async () => {
+    if (!renamingAccount || !newAccountName.trim()) return;
+
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/settings/accounts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: renamingAccount.id,
+          name: newAccountName.trim(),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError((data && (data.reason || data.error)) || "Failed to rename account");
+        return;
+      }
+
+      closeModal();
+      router.refresh();
+    } catch {
+      setError("Failed to rename account");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // Load available categories for migration
+  const loadAvailableCategories = async () => {
+    try {
+      const res = await fetch("/api/settings/categories");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.categories) {
+          // Flatten the category tree and filter out current category
+          const flattenCategories = (cats: Array<{ id: string; name: string; subcategories?: Array<{ id: string; name: string }> }>, prefix = ""): Array<{ id: string; name: string }> => {
+            const result: Array<{ id: string; name: string }> = [];
+            for (const cat of cats) {
+              const displayName = prefix ? `${prefix} > ${cat.name}` : cat.name;
+              if (cat.id !== category.id) {
+                result.push({ id: cat.id, name: displayName });
+              }
+              if (cat.subcategories && cat.subcategories.length > 0) {
+                result.push(...flattenCategories(cat.subcategories as Array<{ id: string; name: string; subcategories?: Array<{ id: string; name: string }> }>, displayName));
+              }
+            }
+            return result;
+          };
+          setAvailableCategories(flattenCategories(data.categories));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load categories:", err);
+    }
+  };
+
+  // Check migration conflicts
+  const checkMigrationConflicts = async () => {
+    if (!migratingIntegration || !targetCategoryId) return;
+
+    setCheckingMigration(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/settings/mpesa/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integrationId: migratingIntegration.id,
+          targetCategoryId,
+          checkOnly: true,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.accounts) {
+        setMigrationAccounts(data.accounts);
+      }
+
+      if (data.hasB2cPaybill) {
+        setMigrationHasB2c(true);
+      } else {
+        setMigrationHasB2c(false);
+      }
+
+      if (data.hasConflicts && data.conflicts) {
+        setMigrationConflicts(data.conflicts);
+        // Pre-fill renames with current names
+        const renames: Record<string, string> = {};
+        for (const conflict of data.conflicts) {
+          renames[conflict.id] = conflict.currentName;
+        }
+        setAccountRenames(renames);
+      } else {
+        setMigrationConflicts([]);
+        setAccountRenames({});
+      }
+    } catch (err) {
+      console.error("Failed to check migration:", err);
+      setError("Failed to check migration conflicts");
+    } finally {
+      setCheckingMigration(false);
+    }
+  };
+
+  // Perform migration
+  const handleMigrate = async () => {
+    if (!migratingIntegration || !targetCategoryId) return;
+
+    setError(null);
+    setIsBusy(true);
+
+    try {
+      const res = await fetch("/api/settings/mpesa/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integrationId: migratingIntegration.id,
+          targetCategoryId,
+          accountRenames: Object.keys(accountRenames).length > 0 ? accountRenames : undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.hasConflicts) {
+          setMigrationConflicts(data.conflicts);
+          setError("Please resolve account name conflicts before migrating");
+        } else {
+          setError(data.error || "Failed to migrate integration");
+        }
+        return;
+      }
+
+      closeModal();
+      await loadMpesaIntegrations();
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to migrate:", err);
+      setError("Failed to migrate integration");
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   async function handleAddAccount() {
     if (!modalCategoryId || !accountName.trim()) return;
@@ -452,23 +624,50 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
       const isDefault = cat.defaultAccountId === a.id;
       return (
         <div key={a.id} className="txn-row">
-          <div className="txn-left">
+          <div className="txn-left" style={{ flex: 1 }}>
             <div className="txn-name">{a.name}</div>
             <div className="txn-meta">{a.id}</div>
           </div>
-          {(() => {
-            const rows = rowsFromTbAccount(a.tbAccount);
-            if (!rows || rows.length === 0) return null;
-            return (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                {rows.map((row) => (
-                  <div key={row.label} className={`txn-meta${row.className ? ` ${row.className}` : ""}`}>
-                    {row.label}: {row.text}
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {(() => {
+              const rows = rowsFromTbAccount(a.tbAccount);
+              if (!rows || rows.length === 0) return null;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                  {rows.map((row) => (
+                    <div key={row.label} className={`txn-meta${row.className ? ` ${row.className}` : ""}`}>
+                      {row.label}: {row.text}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => {
+                router.push(`/dashboard/transactions?categoryId=${encodeURIComponent(cat.id)}&accountId=${encodeURIComponent(a.id)}`);
+              }}
+              style={{ padding: "4px 8px", fontSize: "12px" }}
+              title="Make a transaction with this account"
+            >
+              💸
+            </button>
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => {
+                setRenamingAccount({ id: a.id, name: a.name });
+                setNewAccountName(a.name);
+                setModalType("rename-account");
+                setError(null);
+              }}
+              style={{ padding: "4px 8px", fontSize: "12px" }}
+              title="Rename account"
+            >
+              ✏️
+            </button>
+          </div>
         </div>
       );
     });
@@ -665,6 +864,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                   type="button"
                   onClick={() => {
                     setShowHeaderMenu(false);
+                    setEditingIntegration(null); // Create new integration
                     openModal("mpesa", category.id);
                   }}
                   style={{
@@ -682,7 +882,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                 >
-                  {mpesaIntegration ? "Configure M-Pesa" : "Add M-Pesa Integration"}
+                  Add M-Pesa Integration
                 </button>
                 <button
                   type="button"
@@ -747,32 +947,81 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         </div>
       )}
 
-      {/* M-Pesa Integration Section - Only show if integration exists */}
-      {mpesaIntegration && !loadingMpesa && (
+      {/* M-Pesa Integrations Section - Show all integrations */}
+      {mpesaIntegrations.length > 0 && !loadingMpesa && (
         <div className="panel">
           <div className="panel-header">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
               <div>
-                <div className="panel-title">M-Pesa Integration</div>
-                <div className="panel-subtitle">M-Pesa paybill configuration</div>
+                <div className="panel-title">M-Pesa Integrations</div>
+                <div className="panel-subtitle">{mpesaIntegrations.length} paybill configuration{mpesaIntegrations.length !== 1 ? "s" : ""}</div>
               </div>
               <button
                 type="button"
                 className="button button-ghost"
-                onClick={() => openModal("mpesa", category.id)}
+                onClick={() => {
+                  setEditingIntegration(null);
+                  openModal("mpesa", category.id);
+                }}
+                aria-label="Add M-Pesa integration"
                 style={{ padding: "8px 12px" }}
               >
-                Configure
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
               </button>
             </div>
           </div>
           <div className="txn-list">
-            <div className="txn-row">
-              <div className="txn-left">
-                <div className="txn-name">{mpesaIntegration.paybillName}</div>
-                <div className="txn-meta">Business Short Code: {mpesaIntegration.businessShortCode}</div>
+            {mpesaIntegrations.map((integration) => (
+              <div key={integration.id} className="txn-row">
+                <div className="txn-left" style={{ cursor: "pointer" }} onClick={() => {
+                  setEditingIntegration(integration);
+                  openModal("mpesa", category.id);
+                }}>
+                  <div className="txn-name">{integration.paybillName}</div>
+                  <div className="txn-meta">Business Short Code: {integration.businessShortCode}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setMigratingIntegration(integration);
+                      await loadAvailableCategories();
+                      setModalType("migrate-mpesa");
+                    }}
+                    style={{ padding: "4px 8px", fontSize: "12px" }}
+                    title="Migrate to another category"
+                  >
+                    Migrate
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingIntegration(integration);
+                      openModal("mpesa", category.id);
+                    }}
+                    style={{ padding: "4px 8px", fontSize: "12px" }}
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         </div>
       )}
@@ -1124,7 +1373,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
             onClick={(e) => e.stopPropagation()}
           >
             <div className="panel-header">
-              <div className="panel-title">{mpesaIntegration ? "Edit M-Pesa Integration" : "Configure M-Pesa Integration"}</div>
+              <div className="panel-title">{editingIntegration ? "Edit M-Pesa Integration" : "Add M-Pesa Integration"}</div>
             </div>
             <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
               <div style={{ marginBottom: "16px" }}>
@@ -1239,7 +1488,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                 >
                   <option value="">None - Use this paybill for B2C</option>
                   {availablePaybills
-                    .filter((p) => p.id !== mpesaIntegration?.id && p.categoryId === category.id)
+                    .filter((p) => p.id !== editingIntegration?.id && p.categoryId === category.id)
                     .map((paybill) => (
                       <option key={paybill.id} value={paybill.id}>
                         {paybill.paybillName} ({paybill.businessShortCode})
@@ -1252,7 +1501,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
               </div>
 
               {/* Only show account creation option when creating new integration */}
-              {!mpesaIntegration && (
+              {!editingIntegration && (
                 <div style={{ marginBottom: "20px", padding: "16px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px" }}>
                   <div style={{ marginBottom: "12px" }}>
                     <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
@@ -1268,13 +1517,13 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                       </span>
                     </label>
                     <div style={{ marginTop: "4px", marginLeft: "24px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                      Creates three accounts: Utility, Working, and Unlinked
+                      Creates four accounts: Utility, Working, Unlinked, and Liability
                     </div>
                   </div>
                 </div>
               )}
 
-              {(!shouldCreateAccounts || mpesaIntegration) && (
+              {(!shouldCreateAccounts || editingIntegration) && (
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ marginBottom: "12px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px", fontSize: "13px" }}>
                     Select existing accounts for M-Pesa integration. All three accounts are required.
@@ -1442,8 +1691,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                       }
 
                       closeModal();
-                      // Reload M-Pesa integration immediately
-                      await loadMpesaIntegration();
+                      // Reload M-Pesa integrations immediately
+                      await loadMpesaIntegrations();
                       router.refresh();
                     } catch {
                       setError("Failed to configure M-Pesa integration");
@@ -1711,6 +1960,253 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                   disabled={isBusy || !subcategoryName.trim()}
                 >
                   {isBusy ? "Adding…" : "Add Sub-category"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for migrating M-Pesa integration */}
+      {modalType === "migrate-mpesa" && migratingIntegration && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "600px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)", maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Migrate M-Pesa Integration</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 500, marginBottom: "4px" }}>
+                  Moving: {migratingIntegration.paybillName}
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                  Business Short Code: {migratingIntegration.businessShortCode}
+                </div>
+                {migratingIntegration.b2cPaybill && (
+                  <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)", marginTop: "4px" }}>
+                    ⚠️ This integration has a linked B2C paybill that will also be migrated
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  Target Category *
+                </label>
+                {availableCategories.length === 0 ? (
+                  <div style={{ padding: "12px", backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px", fontSize: "14px" }}>
+                    No other categories available for migration.
+                  </div>
+                ) : (
+                  <select
+                    className="setup-input"
+                    value={targetCategoryId}
+                    onChange={(e) => {
+                      setTargetCategoryId(e.target.value);
+                      setMigrationConflicts([]);
+                      setMigrationAccounts([]);
+                      setAccountRenames({});
+                    }}
+                    disabled={isBusy || checkingMigration}
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">Select a category</option>
+                    {availableCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {targetCategoryId && !checkingMigration && migrationAccounts.length === 0 && (
+                <div style={{ marginBottom: "16px" }}>
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    onClick={checkMigrationConflicts}
+                    disabled={isBusy}
+                    style={{ width: "100%" }}
+                  >
+                    Check for Conflicts
+                  </button>
+                </div>
+              )}
+
+              {checkingMigration && (
+                <div style={{ marginBottom: "16px", textAlign: "center", color: "var(--text-secondary, #666)" }}>
+                  Checking for conflicts...
+                </div>
+              )}
+
+              {migrationAccounts.length > 0 && (
+                <div style={{ marginBottom: "16px" }}>
+                  <div style={{ fontSize: "14px", fontWeight: 500, marginBottom: "8px" }}>
+                    Accounts to Migrate ({migrationAccounts.length})
+                    {migrationHasB2c && (
+                      <span style={{ fontSize: "12px", fontWeight: 400, marginLeft: "8px", color: "var(--text-secondary, #666)" }}>
+                        (includes B2C accounts)
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ backgroundColor: "var(--bg-secondary, #f5f5f5)", borderRadius: "8px", padding: "12px" }}>
+                    {migrationAccounts.map((account) => {
+                      const hasConflict = migrationConflicts.some((c) => c.id === account.id);
+                      return (
+                        <div key={account.id} style={{ marginBottom: hasConflict ? "12px" : "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "13px" }}>{account.name}</span>
+                            {hasConflict && (
+                              <span style={{ fontSize: "11px", padding: "2px 6px", backgroundColor: "var(--bg-warning, #fff3e0)", color: "var(--text-warning, #e65100)", borderRadius: "4px" }}>
+                                Name conflict
+                              </span>
+                            )}
+                          </div>
+                          {hasConflict && (
+                            <div style={{ marginTop: "8px" }}>
+                              <input
+                                className="setup-input"
+                                value={accountRenames[account.id] || ""}
+                                onChange={(e) => setAccountRenames({ ...accountRenames, [account.id]: e.target.value })}
+                                placeholder="Enter new name for this account"
+                                disabled={isBusy}
+                                style={{ width: "100%", fontSize: "13px" }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {migrationConflicts.length > 0 && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-warning, #e65100)" }}>
+                      ⚠️ {migrationConflicts.length} account{migrationConflicts.length !== 1 ? "s have" : " has"} name conflicts. Please provide unique names above.
+                    </div>
+                  )}
+                  {migrationConflicts.length === 0 && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--text-success, #2e7d32)" }}>
+                      ✓ No conflicts detected. Ready to migrate.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {error && (
+                <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-error, #ffebee)", borderRadius: "8px", fontSize: "14px", color: "var(--text-error, #c62828)" }}>
+                  {error}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={handleMigrate}
+                  disabled={
+                    isBusy ||
+                    !targetCategoryId ||
+                    availableCategories.length === 0 ||
+                    migrationAccounts.length === 0 ||
+                    (migrationConflicts.length > 0 && migrationConflicts.some((c) => !accountRenames[c.id]?.trim()))
+                  }
+                >
+                  {isBusy ? "Migrating…" : "Migrate Integration"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for renaming account */}
+      {modalType === "rename-account" && renamingAccount && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={closeModal}
+        >
+          <div
+            className="panel"
+            style={{ width: "90%", maxWidth: "500px", margin: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header">
+              <div className="panel-title">Rename Account</div>
+            </div>
+            <div style={{ padding: "20px", backgroundColor: "var(--bg-primary, #ffffff)" }}>
+              <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px", fontSize: "13px" }}>
+                Current name: <strong>{renamingAccount.name}</strong>
+              </div>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                  New Account Name *
+                </label>
+                <input
+                  className="setup-input"
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  placeholder="Enter new account name"
+                  disabled={isBusy}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleRenameAccount();
+                    }
+                  }}
+                  style={{ width: "100%" }}
+                  autoFocus
+                />
+              </div>
+
+              {error && (
+                <div style={{ marginBottom: "16px", padding: "12px", backgroundColor: "var(--bg-error, #ffebee)", borderRadius: "8px", fontSize: "14px", color: "var(--text-error, #c62828)" }}>
+                  {error}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                <button type="button" className="button button-ghost" onClick={closeModal} disabled={isBusy}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={handleRenameAccount}
+                  disabled={isBusy || !newAccountName.trim() || newAccountName.trim() === renamingAccount.name}
+                >
+                  {isBusy ? "Renaming…" : "Rename Account"}
                 </button>
               </div>
             </div>

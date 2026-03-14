@@ -142,12 +142,14 @@ export default function TransactionsClient({
   categories,
   transfers,
   initialCategoryId,
+  initialAccountId,
   externalAccountId,
 }: {
   accounts: Account[];
   categories: Category[];
   transfers: Transfer[];
   initialCategoryId: string | null;
+  initialAccountId?: string | null;
   externalAccountId?: string;
 }) {
   const router = useRouter();
@@ -157,7 +159,7 @@ export default function TransactionsClient({
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(initialAccountId || "");
   
   // Detail modal state
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);

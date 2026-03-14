@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { createAccount } from "@/lib/settingsService";
-import { executeSurrealQL, getResultArray, thingIdToString } from "@/lib/surrealdb";
+import { executeSurrealQL, getResultArray, thingIdToString, toSurrealThingLiteral } from "@/lib/surrealdb";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
 type AccountType = (typeof ACCOUNT_TYPES)[number];
@@ -92,6 +92,69 @@ export async function GET(req: Request) {
     .filter(Boolean);
 
   return NextResponse.json({ accounts });
+}
+
+export async function PUT(req: Request) {
+  console.log("[api] PUT /api/settings/accounts");
+
+  const session = await auth0.getSession();
+  if (!session?.user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const body = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+  const accountId = body?.accountId;
+  const name = body?.name;
+
+  if (typeof accountId !== "string" || typeof name !== "string") {
+    return NextResponse.json({ error: "invalid_payload", reason: "accountId and name are required" }, { status: 400 });
+  }
+
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return NextResponse.json({ error: "invalid_payload", reason: "name cannot be empty" }, { status: 400 });
+  }
+
+  const audience = process.env.AUTH0_AUDIENCE || process.env.NEXT_PUBLIC_AUTH0_AUDIENCE;
+  const scope = process.env.AUTH0_SCOPE;
+  const accessTokenOptions = {
+    ...(audience ? { audience } : {}),
+    ...(scope ? { scope } : {}),
+  };
+
+  let token: string | undefined;
+  try {
+    const res = await auth0.getAccessToken(accessTokenOptions);
+    token = res.token;
+  } catch {
+    return NextResponse.json({ error: "token_error" }, { status: 500 });
+  }
+
+  const accountLiteral = toSurrealThingLiteral(accountId);
+  if (!accountLiteral) {
+    return NextResponse.json({ error: "invalid_account_id" }, { status: 400 });
+  }
+
+  const query = `UPDATE ${accountLiteral} SET name = ${JSON.stringify(trimmedName)};`;
+
+  const result = await executeSurrealQL({
+    token,
+    query,
+    logName: "settingsService.PUT /api/settings/accounts",
+  });
+
+  if (!result.success) {
+    return NextResponse.json({ error: "update_failed", details: result.error }, { status: 500 });
+  }
+
+  return NextResponse.json({ status: "updated" });
 }
 
 export async function POST(req: Request) {
