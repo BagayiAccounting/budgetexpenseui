@@ -17,6 +17,8 @@ type MpesaIntegrationRecord = {
   utility_account?: unknown;
   working_account?: unknown;
   unlinked_account?: unknown;
+  liability_account?: unknown;
+  b2c_paybill?: unknown;
 };
 
 export async function GET(request: NextRequest) {
@@ -41,7 +43,8 @@ export async function GET(request: NextRequest) {
 
     if (listAll === "true") {
       // Return all M-Pesa integrations (for dropdown selection)
-      query = `SELECT id, business_short_code, paybill_name FROM mpesa_paybill_integration;`;
+      // Include category_id so UI can filter by same category
+      query = `SELECT id, business_short_code, paybill_name, category_id FROM mpesa_paybill_integration;`;
     } else {
       // Return integration for specific category
       if (!categoryId) {
@@ -78,7 +81,8 @@ export async function GET(request: NextRequest) {
       utilityAccount: thingIdToString(integration.utility_account),
       workingAccount: thingIdToString(integration.working_account),
       unlinkedAccount: thingIdToString(integration.unlinked_account),
-      b2cPaybill: thingIdToString((integration as any).b2c_paybill),
+      liabilityAccount: thingIdToString(integration.liability_account),
+      b2cPaybill: thingIdToString(integration.b2c_paybill),
     }));
 
     return NextResponse.json({ integrations: formatted });
@@ -111,6 +115,7 @@ export async function POST(request: NextRequest) {
       utilityAccountId,
       workingAccountId,
       unlinkedAccountId,
+      liabilityAccountId,
       createAccounts,
     } = body;
 
@@ -136,24 +141,30 @@ export async function POST(request: NextRequest) {
     let utilityAccountLiteral: string;
     let workingAccountLiteral: string;
     let unlinkedAccountLiteral: string;
+    let liabilityAccountLiteral: string;
 
-    // If createAccounts is true, create the three required accounts
+    // If createAccounts is true, create the four required accounts (including liability)
     if (createAccounts) {
       const createAccountsQuery = `
         CREATE account CONTENT {
-          name: "M-Pesa Utility",
+          name: "M-Pesa Utility ${businessShortCode}",
           category_id: ${categoryLiteral},
           type: "asset"
         };
         CREATE account CONTENT {
-          name: "M-Pesa Working",
+          name: "M-Pesa Working ${businessShortCode}",
           category_id: ${categoryLiteral},
           type: "asset"
         };
         CREATE account CONTENT {
-          name: "M-Pesa Unlinked",
+          name: "M-Pesa Unlinked ${businessShortCode}",
           category_id: ${categoryLiteral},
-          type: "asset"
+          type: "liability"
+        };
+        CREATE account CONTENT {
+          name: "M-Pesa Liability ${businessShortCode}",
+          category_id: ${categoryLiteral},
+          type: "liability"
         };
       `;
 
@@ -170,12 +181,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Extract the three account records from the three CREATE statements
+      // Extract the four account records from the four CREATE statements
       const utilityAccount = getResultArray<{ id: unknown }>(accountsResult.data[0])[0];
       const workingAccount = getResultArray<{ id: unknown }>(accountsResult.data[1])[0];
       const unlinkedAccount = getResultArray<{ id: unknown }>(accountsResult.data[2])[0];
+      const liabilityAccount = getResultArray<{ id: unknown }>(accountsResult.data[3])[0];
 
-      if (!utilityAccount?.id || !workingAccount?.id || !unlinkedAccount?.id) {
+      if (!utilityAccount?.id || !workingAccount?.id || !unlinkedAccount?.id || !liabilityAccount?.id) {
         return NextResponse.json(
           { error: "Failed to retrieve created account IDs" },
           { status: 500 }
@@ -185,8 +197,9 @@ export async function POST(request: NextRequest) {
       const utilityId = thingIdToString(utilityAccount.id);
       const workingId = thingIdToString(workingAccount.id);
       const unlinkedId = thingIdToString(unlinkedAccount.id);
+      const liabilityId = thingIdToString(liabilityAccount.id);
 
-      if (!utilityId || !workingId || !unlinkedId) {
+      if (!utilityId || !workingId || !unlinkedId || !liabilityId) {
         return NextResponse.json(
           { error: "Failed to parse created account IDs" },
           { status: 500 }
@@ -196,11 +209,12 @@ export async function POST(request: NextRequest) {
       utilityAccountLiteral = toSurrealThingLiteral(utilityId) || "";
       workingAccountLiteral = toSurrealThingLiteral(workingId) || "";
       unlinkedAccountLiteral = toSurrealThingLiteral(unlinkedId) || "";
+      liabilityAccountLiteral = toSurrealThingLiteral(liabilityId) || "";
     } else {
       // Use provided account IDs
-      if (!utilityAccountId || !workingAccountId || !unlinkedAccountId) {
+      if (!utilityAccountId || !workingAccountId || !unlinkedAccountId || !liabilityAccountId) {
         return NextResponse.json(
-          { error: "Missing account IDs. Provide utilityAccountId, workingAccountId, and unlinkedAccountId" },
+          { error: "Missing account IDs. Provide utilityAccountId, workingAccountId, unlinkedAccountId, and liabilityAccountId" },
           { status: 400 }
         );
       }
@@ -208,14 +222,15 @@ export async function POST(request: NextRequest) {
       utilityAccountLiteral = toSurrealThingLiteral(utilityAccountId) || "";
       workingAccountLiteral = toSurrealThingLiteral(workingAccountId) || "";
       unlinkedAccountLiteral = toSurrealThingLiteral(unlinkedAccountId) || "";
+      liabilityAccountLiteral = toSurrealThingLiteral(liabilityAccountId) || "";
 
-      if (!utilityAccountLiteral || !workingAccountLiteral || !unlinkedAccountLiteral) {
+      if (!utilityAccountLiteral || !workingAccountLiteral || !unlinkedAccountLiteral || !liabilityAccountLiteral) {
         return NextResponse.json({ error: "Invalid account IDs" }, { status: 400 });
       }
     }
 
-    // Check if integration already exists for this category
-    const checkQuery = `SELECT * FROM mpesa_paybill_integration WHERE category_id = ${categoryLiteral};`;
+    // Check if integration already exists with the same business_short_code
+    const checkQuery = `SELECT * FROM mpesa_paybill_integration WHERE business_short_code = ${JSON.stringify(businessShortCode)};`;
     
     const checkResult = await executeSurrealQL({
       token,
@@ -282,6 +297,7 @@ export async function POST(request: NextRequest) {
       setFields.push(`utility_account = ${utilityAccountLiteral}`);
       setFields.push(`working_account = ${workingAccountLiteral}`);
       setFields.push(`unlinked_account = ${unlinkedAccountLiteral}`);
+      setFields.push(`liability_account = ${liabilityAccountLiteral}`);
       
       query = `
         UPDATE ${existingLiteral} SET
@@ -302,7 +318,8 @@ export async function POST(request: NextRequest) {
           category_id: ${categoryLiteral},
           utility_account: ${utilityAccountLiteral},
           working_account: ${workingAccountLiteral},
-          unlinked_account: ${unlinkedAccountLiteral}
+          unlinked_account: ${unlinkedAccountLiteral},
+          liability_account: ${liabilityAccountLiteral}
         };
       `;
       logName = "mpesa.POST /api/settings/mpesa (create integration)";

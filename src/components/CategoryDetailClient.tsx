@@ -36,6 +36,7 @@ type MpesaIntegration = {
   utilityAccount: string;
   workingAccount: string;
   unlinkedAccount: string;
+  liabilityAccount: string;
   b2cPaybill?: string;
 };
 
@@ -141,11 +142,12 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
   const [consumerKey, setConsumerKey] = useState("");
   const [consumerSecret, setConsumerSecret] = useState("");
   const [b2cPaybillId, setB2cPaybillId] = useState("");
-  const [availablePaybills, setAvailablePaybills] = useState<Array<{ id: string; paybillName: string; businessShortCode: string }>>([]);
+  const [availablePaybills, setAvailablePaybills] = useState<Array<{ id: string; paybillName: string; businessShortCode: string; categoryId?: string }>>([]);
   const [shouldCreateAccounts, setShouldCreateAccounts] = useState(true);
   const [utilityAccountId, setUtilityAccountId] = useState("");
   const [workingAccountId, setWorkingAccountId] = useState("");
   const [unlinkedAccountId, setUnlinkedAccountId] = useState("");
+  const [liabilityAccountId, setLiabilityAccountId] = useState("");
   
   // M-Pesa link states
   const [availableMpesaIntegrations, setAvailableMpesaIntegrations] = useState<Array<{ id: string; paybillName: string; businessShortCode: string }>>([]);
@@ -350,6 +352,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         setUtilityAccountId(mpesaIntegration.utilityAccount || "");
         setWorkingAccountId(mpesaIntegration.workingAccount || "");
         setUnlinkedAccountId(mpesaIntegration.unlinkedAccount || "");
+        setLiabilityAccountId(mpesaIntegration.liabilityAccount || "");
       } else {
         setBusinessShortCode("");
         setPaybillName("");
@@ -362,6 +365,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         setUtilityAccountId("");
         setWorkingAccountId("");
         setUnlinkedAccountId("");
+        setLiabilityAccountId("");
       }
     }
     
@@ -1235,7 +1239,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                 >
                   <option value="">None - Use this paybill for B2C</option>
                   {availablePaybills
-                    .filter((p) => p.id !== mpesaIntegration?.id)
+                    .filter((p) => p.id !== mpesaIntegration?.id && p.categoryId === category.id)
                     .map((paybill) => (
                       <option key={paybill.id} value={paybill.id}>
                         {paybill.paybillName} ({paybill.businessShortCode})
@@ -1243,7 +1247,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                     ))}
                 </select>
                 <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                  Select a separate paybill for B2C transactions. Leave blank to use this paybill for all transactions.
+                  Select a separate paybill for B2C transactions. Only paybills from the same category are shown.
                 </div>
               </div>
 
@@ -1335,6 +1339,26 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                       ))}
                     </select>
                   </div>
+
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Liability Account
+                    </label>
+                    <select
+                      className="setup-input"
+                      value={liabilityAccountId}
+                      onChange={(e) => setLiabilityAccountId(e.target.value)}
+                      disabled={isBusy}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Select an account</option>
+                      {category.accounts.filter((acc) => acc.type === "liability").map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -1378,8 +1402,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                       return;
                     }
 
-                    if (!shouldCreateAccounts && (!utilityAccountId || !workingAccountId || !unlinkedAccountId)) {
-                      setError("Please select all three accounts");
+                    if (!shouldCreateAccounts && (!utilityAccountId || !workingAccountId || !unlinkedAccountId || !liabilityAccountId)) {
+                      setError("Please select all four accounts");
                       return;
                     }
 
@@ -1401,6 +1425,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                           utilityAccountId,
                           workingAccountId,
                           unlinkedAccountId,
+                          liabilityAccountId,
                         }),
                       };
 

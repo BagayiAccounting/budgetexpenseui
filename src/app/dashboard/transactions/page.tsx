@@ -56,6 +56,7 @@ export default async function TransactionsPage({
     name: string; 
     isLinked: boolean; 
     defaultAccountId?: string; 
+    defaultExpenseAccountId?: string;
     paymentIntegrationId?: string;
     hasB2cPaybill?: boolean;
     b2cPaybillId?: string;
@@ -68,12 +69,13 @@ export default async function TransactionsPage({
     const { token } = await auth0.getAccessToken(accessTokenOptions);
     accountsData = await listAllAccounts({ accessToken: token });
 
-    // Fetch categories with payment integration link status, default account, and b2c_paybill info
+    // Fetch categories with payment integration link status, default account, default expense account, and b2c_paybill info
     const categoriesQuery = `
       SELECT 
         id, 
         name, 
-        default_account_id, 
+        default_account_id,
+        default_expense_account_id, 
         fn::category_linked_payment_integration(id) AS payment_integration,
         fn::category_linked_payment_integration(id).out AS integration_record,
         fn::category_linked_payment_integration(id).out.b2c_paybill AS b2c_paybill,
@@ -94,6 +96,7 @@ export default async function TransactionsPage({
         name?: unknown; 
         payment_integration?: unknown; 
         default_account_id?: unknown;
+        default_expense_account_id?: unknown;
         integration_record?: unknown;
         b2c_paybill?: unknown;
         paybill_name?: unknown;
@@ -105,6 +108,7 @@ export default async function TransactionsPage({
           name: typeof c.name === "string" ? c.name : "(Unnamed)",
           isLinked: c.payment_integration != null,
           defaultAccountId: thingIdToString(c.default_account_id) || undefined,
+          defaultExpenseAccountId: thingIdToString(c.default_expense_account_id) || undefined,
           paymentIntegrationId: thingIdToString(c.integration_record) || undefined,
           hasB2cPaybill: c.b2c_paybill != null,
           b2cPaybillId: thingIdToString(c.b2c_paybill) || undefined,

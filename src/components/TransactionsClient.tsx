@@ -22,6 +22,7 @@ type Category = {
   name: string;
   isLinked: boolean;
   defaultAccountId?: string;
+  defaultExpenseAccountId?: string;
   paymentIntegrationId?: string;
   hasB2cPaybill?: boolean;
   b2cPaybillId?: string;
@@ -572,6 +573,15 @@ export default function TransactionsClient({
       return;
     }
 
+    // Get the category's default expense account for M-Pesa payments
+    const fromAccountCategory = categories.find((cat) => cat.id === fromAccount?.categoryId);
+    const defaultExpenseAccountId = fromAccountCategory?.defaultExpenseAccountId;
+    
+    if (!defaultExpenseAccountId) {
+      setError("Category does not have a default expense account configured");
+      return;
+    }
+
     setError(null);
     setIsBusy(true);
 
@@ -581,7 +591,7 @@ export default function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fromAccountId,
-          // No toAccountId for buy goods
+          toAccountId: defaultExpenseAccountId,
           amount: numAmount,
           type: transferType,
           status: submitDraft ? "submitted" : "draft",
@@ -622,6 +632,15 @@ export default function TransactionsClient({
       return;
     }
 
+    // Get the category's default expense account for M-Pesa payments
+    const fromAccountCategory = categories.find((cat) => cat.id === fromAccount?.categoryId);
+    const defaultExpenseAccountId = fromAccountCategory?.defaultExpenseAccountId;
+    
+    if (!defaultExpenseAccountId) {
+      setError("Category does not have a default expense account configured");
+      return;
+    }
+
     setError(null);
     setIsBusy(true);
 
@@ -631,7 +650,7 @@ export default function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fromAccountId,
-          // No toAccountId for paybill
+          toAccountId: defaultExpenseAccountId,
           amount: numAmount,
           type: transferType,
           status: submitDraft ? "submitted" : "draft",
@@ -690,6 +709,15 @@ export default function TransactionsClient({
       return;
     }
 
+    // Get the category's default expense account for M-Pesa payments
+    const fromAccountCategory = categories.find((cat) => cat.id === fromAccount?.categoryId);
+    const defaultExpenseAccountId = fromAccountCategory?.defaultExpenseAccountId;
+    
+    if (!defaultExpenseAccountId) {
+      setError("Category does not have a default expense account configured");
+      return;
+    }
+
     setError(null);
     setIsBusy(true);
 
@@ -699,7 +727,7 @@ export default function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fromAccountId,
-          // No toAccountId for send money
+          toAccountId: defaultExpenseAccountId,
           amount: numAmount,
           type: transferType,
           status: submitDraft ? "submitted" : "draft",
