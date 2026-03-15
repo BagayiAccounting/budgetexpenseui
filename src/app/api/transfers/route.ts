@@ -113,30 +113,35 @@ export async function POST(req: NextRequest) {
     
     // Add payment_channel if provided
     if (paymentChannel) {
-      // For bagayi_inter_switch channel, to_account should be a record reference
+      // For bagayi_inter_switch channel, to_account and from_account should be record references
       if (paymentChannel.channelId === "bagayi_inter_switch") {
         const toAccountLiteral = toSurrealThingLiteral(paymentChannel.toAccount);
-        if (toAccountLiteral) {
-          // Build payment integration reference if provided
-          const paymentIntegrationLiteral = paymentChannel.paymentIntegration 
-            ? toSurrealThingLiteral(paymentChannel.paymentIntegration)
-            : null;
-          
-          if (paymentIntegrationLiteral) {
-            contentFields += `,\n  payment_channel: {
-    channel_id: ${JSON.stringify(paymentChannel.channelId)},
-    to_account: ${toAccountLiteral},
-    payment_integration: ${paymentIntegrationLiteral}
-  }`;
-          } else {
-            contentFields += `,\n  payment_channel: {
-    channel_id: ${JSON.stringify(paymentChannel.channelId)},
-    to_account: ${toAccountLiteral}
-  }`;
-          }
-        } else {
+        if (!toAccountLiteral) {
           return NextResponse.json({ error: "Invalid to_account for bagayi_inter_switch channel", reason: "invalid_payment_channel_account" }, { status: 400 });
         }
+        
+        // Build payment integration reference if provided
+        const paymentIntegrationLiteral = paymentChannel.paymentIntegration 
+          ? toSurrealThingLiteral(paymentChannel.paymentIntegration)
+          : null;
+        
+        // Build from_account reference if provided (for cross-category transfers)
+        const fromAccountLiteral = paymentChannel.fromAccount
+          ? toSurrealThingLiteral(paymentChannel.fromAccount)
+          : null;
+        
+        // Build the payment_channel object with optional fields
+        let channelFields = `channel_id: ${JSON.stringify(paymentChannel.channelId)}, to_account: ${toAccountLiteral}`;
+        
+        if (fromAccountLiteral) {
+          channelFields += `, from_account: ${fromAccountLiteral}`;
+        }
+        
+        if (paymentIntegrationLiteral) {
+          channelFields += `, payment_integration: ${paymentIntegrationLiteral}`;
+        }
+        
+        contentFields += `,\n  payment_channel: { ${channelFields} }`;
       } else if (paymentChannel.channelId === "MPESA") {
         // For MPESA channel, use new structure: channel_id: "MPESA", action: "BusinessPayment"|"BusinessBuyGoods"|"BusinessPayBill", to_account: string
         // BusinessPayBill also includes account_reference

@@ -197,6 +197,12 @@ export default function TransactionsClient({
   // For bagayi_inter_switch transfers to linked categories with b2c_paybill, user can choose which paybill
   const [selectedPaybillType, setSelectedPaybillType] = useState<"main" | "b2c">("main");
   
+  // For bagayi_inter_switch transfers from unlinked category to expense in another category
+  const [useInterSwitchChannel, setUseInterSwitchChannel] = useState(false);
+  const [channelDestinationCategoryId, setChannelDestinationCategoryId] = useState("");  // Destination category
+  const [channelToAccountId, setChannelToAccountId] = useState("");  // Asset account in destination category
+  const [channelFromAccountId, setChannelFromAccountId] = useState("");  // Equity/Liability account in destination category
+  
   // Frequent recipients for M-Pesa payments
   type FrequentRecipient = {
     toAccount: string;
@@ -259,6 +265,26 @@ export default function TransactionsClient({
     return categories.find((cat) => cat.id === toAccount.categoryId);
   })();
   
+  // Check if we're sending to an expense account - payment channel is REQUIRED
+  const isToExpenseAccount = toAccount?.type === "expense";
+  
+  // For unlinked category sending to expense: bagayi_inter_switch is required
+  const isToExpenseFromUnlinked = (() => {
+    if (!fromAccount || !toAccount) return false;
+    if (fromCategory?.isLinked) return false;  // From must be unlinked
+    if (toAccount.type !== "expense") return false;  // To must be expense account
+    return true;
+  })();
+  
+  // For linked category sending to expense in same category: MPESA is required
+  const isToExpenseFromLinked = (() => {
+    if (!fromAccount || !toAccount) return false;
+    if (!fromCategory?.isLinked) return false;  // From must be linked
+    if (toAccount.type !== "expense") return false;  // To must be expense account
+    if (toAccount.categoryId !== fromCategory.id) return false;  // Must be same category
+    return true;
+  })();
+  
   // Check if transfer requires payment channel (cross-category transfer)
   // This is needed when:
   // 1. Both accounts exist
@@ -276,10 +302,23 @@ export default function TransactionsClient({
     // (like BusinessPayment, BusinessBuyGoods) - not bagayi_inter_switch
     if (fromCategory?.isLinked) return false;
     
+    
     // For all other cross-category transfers (from unlinked category to any other category),
     // we need bagayi_inter_switch payment channel
     return true;
   })();
+  
+  // Get accounts available for bagayi_inter_switch channel selection
+  // channelToAccount must be asset type in destination category
+  // channelFromAccount must be equity or liability in destination category  
+  const destinationCategoryAccounts = (() => {
+    if (!toAccount || !isToExpenseFromUnlinked) return [];
+    // Get all accounts in the destination category (where the expense account belongs)
+    return accounts.filter((acc) => acc.categoryId === toAccount.categoryId);
+  })();
+  
+  const channelToAccountOptions = destinationCategoryAccounts.filter((acc) => acc.type === "asset");
+  const channelFromAccountOptions = destinationCategoryAccounts.filter((acc) => acc.type === "equity" || acc.type === "liability");
   
   // Check if cross-category transfer is to a linked category
   // This requires external_transaction_id for reconciliation
@@ -388,6 +427,10 @@ export default function TransactionsClient({
     setExtMetaType("");
     setExternalTransactionId("");
     setSubmitDraft(true);
+    setUseInterSwitchChannel(false);
+    setChannelDestinationCategoryId("");
+    setChannelToAccountId("");
+    setChannelFromAccountId("");
     setError(null);
     // Lazy-load account balances when modal opens
     void fetchAccountBalances();
@@ -500,6 +543,7 @@ export default function TransactionsClient({
         paymentChannel?: {
           channelId: string;
           toAccount: string;
+          fromAccount?: string;
           paymentIntegration?: string;
         };
       };
@@ -513,12 +557,21 @@ export default function TransactionsClient({
         label: label.trim() || undefined,
         createdAt,
         metadata,
-        // Include externalTransactionId for: external account transfers OR cross-category transfers to linked categories
-        externalTransactionId: (involvesExternalAccount || requiresExternalTransactionId) && externalTransactionId.trim() ? externalTransactionId.trim() : undefined,
+        // Include externalTransactionId for: external account transfers OR cross-category transfers to linked categories OR useInterSwitchChannel
+        externalTransactionId: (involvesExternalAccount || requiresExternalTransactionId || useInterSwitchChannel) && externalTransactionId.trim() ? externalTransactionId.trim() : undefined,
       };
       
+      // If using bagayi_inter_switch channel for cross-category transfer
+      if (useInterSwitchChannel && channelToAccountId && channelFromAccountId) {
+        requestBody.toAccountId = toAccountId;
+        requestBody.paymentChannel = {
+          channelId: "bagayi_inter_switch",
+          toAccount: channelToAccountId,
+          fromAccount: channelFromAccountId,
+        };
+      }
       // If transfer requires payment_channel (cross-category to linked category)
-      if (requiresPaymentChannel && toAccountId) {
+      else if (requiresPaymentChannel && toAccountId) {
         // Use bagayi_inter_switch channel to route to external payment integration
         requestBody.paymentChannel = {
           channelId: "bagayi_inter_switch",
@@ -826,119 +879,124 @@ export default function TransactionsClient({
               >
                 📝 Record Manual Transaction
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTransactionMenu(false);
-                  setModalMode("sendmoney");
-                  setShowModal(true);
-                  // If account filter is selected, pre-select it as From Account
-                  setFromAccountId(selectedAccountId || "");
-                  setPhoneNumber("254");
-                  setAmount("");
-                  setDisplayAmount("");
-                  setTransferType("payment");
-                  setDescription("");
-                  setLabel("");
-                  setSubmitDraft(true);
-                  setError(null);
-                  // Lazy-load account balances and frequent recipients
-                  void fetchAccountBalances();
-                  void fetchFrequentRecipients("BusinessPayment");
-                }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "12px 16px",
-                  textAlign: "left",
-                  border: "none",
-                  background: "none",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  color: "#000000",
-                  fontWeight: 500,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                💸 M-Pesa Send Money
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTransactionMenu(false);
-                  setModalMode("buygoods");
-                  setShowModal(true);
-                  // If account filter is selected, pre-select it as From Account
-                  setFromAccountId(selectedAccountId || "");
-                  setBuyGoodsNumber("");
-                  setAmount("");
-                  setDisplayAmount("");
-                  setTransferType("payment");
-                  setDescription("");
-                  setLabel("");
-                  setSubmitDraft(true);
-                  setError(null);
-                  // Lazy-load account balances and frequent recipients
-                  void fetchAccountBalances();
-                  void fetchFrequentRecipients("BusinessBuyGoods");
-                }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "12px 16px",
-                  textAlign: "left",
-                  border: "none",
-                  background: "none",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  color: "#000000",
-                  fontWeight: 500,
-                  borderTop: "1px solid var(--border)",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                🛒 Pay via Buy Goods
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTransactionMenu(false);
-                  setModalMode("paybill");
-                  setShowModal(true);
-                  // If account filter is selected, pre-select it as From Account
-                  setFromAccountId(selectedAccountId || "");
-                  setPaybillNumber("");
-                  setAccountReference("");
-                  setAmount("");
-                  setDisplayAmount("");
-                  setTransferType("payment");
-                  setDescription("");
-                  setLabel("");
-                  setSubmitDraft(true);
-                  setError(null);
-                  // Lazy-load account balances and frequent recipients
-                  void fetchAccountBalances();
-                  void fetchFrequentRecipients("BusinessPayBill");
-                }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "12px 16px",
-                  textAlign: "left",
-                  border: "none",
-                  background: "none",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  color: "#000000",
-                  fontWeight: 500,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                📋 Pay via Paybill
-              </button>
+              {/* Only show M-Pesa options when category is linked to M-Pesa */}
+              {isCategoryLinked && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTransactionMenu(false);
+                      setModalMode("sendmoney");
+                      setShowModal(true);
+                      // If account filter is selected, pre-select it as From Account
+                      setFromAccountId(selectedAccountId || "");
+                      setPhoneNumber("254");
+                      setAmount("");
+                      setDisplayAmount("");
+                      setTransferType("payment");
+                      setDescription("");
+                      setLabel("");
+                      setSubmitDraft(true);
+                      setError(null);
+                      // Lazy-load account balances and frequent recipients
+                      void fetchAccountBalances();
+                      void fetchFrequentRecipients("BusinessPayment");
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "12px 16px",
+                      textAlign: "left",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      color: "#000000",
+                      fontWeight: 500,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  >
+                    💸 M-Pesa Send Money
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTransactionMenu(false);
+                      setModalMode("buygoods");
+                      setShowModal(true);
+                      // If account filter is selected, pre-select it as From Account
+                      setFromAccountId(selectedAccountId || "");
+                      setBuyGoodsNumber("");
+                      setAmount("");
+                      setDisplayAmount("");
+                      setTransferType("payment");
+                      setDescription("");
+                      setLabel("");
+                      setSubmitDraft(true);
+                      setError(null);
+                      // Lazy-load account balances and frequent recipients
+                      void fetchAccountBalances();
+                      void fetchFrequentRecipients("BusinessBuyGoods");
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "12px 16px",
+                      textAlign: "left",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      color: "#000000",
+                      fontWeight: 500,
+                      borderTop: "1px solid var(--border)",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  >
+                    🛒 Pay via Buy Goods
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTransactionMenu(false);
+                      setModalMode("paybill");
+                      setShowModal(true);
+                      // If account filter is selected, pre-select it as From Account
+                      setFromAccountId(selectedAccountId || "");
+                      setPaybillNumber("");
+                      setAccountReference("");
+                      setAmount("");
+                      setDisplayAmount("");
+                      setTransferType("payment");
+                      setDescription("");
+                      setLabel("");
+                      setSubmitDraft(true);
+                      setError(null);
+                      // Lazy-load account balances and frequent recipients
+                      void fetchAccountBalances();
+                      void fetchFrequentRecipients("BusinessPayBill");
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "12px 16px",
+                      textAlign: "left",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      color: "#000000",
+                      fontWeight: 500,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  >
+                    📋 Pay via Paybill
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1550,175 +1608,179 @@ export default function TransactionsClient({
                   <select
                     className="setup-input"
                     value={toAccountId}
-                    onChange={(e) => setToAccountId(e.target.value)}
+                    onChange={(e) => {
+                      setToAccountId(e.target.value);
+                      // Reset interswitch channel state when changing account
+                      setUseInterSwitchChannel(false);
+                      setChannelToAccountId("");
+                      setChannelFromAccountId("");
+                    }}
                     disabled={isBusy}
                     style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
                   >
                     <option value="">Select account</option>
-                    {(() => {
-                      // Build a set of valid destination account IDs
-                      // For cross-category transfers, only default accounts of root categories are allowed
-                      const defaultAccountIds = new Set(
-                        categories
-                          .filter((cat) => cat.defaultAccountId)
-                          .map((cat) => cat.defaultAccountId!)
-                      );
-                      
-                      return accounts
-                        .filter((acc) => {
-                          // Never show the from account
-                          if (acc.id === fromAccountId) return false;
-                          
-                          // Always allow external account
-                          if (externalAccountId && acc.id === externalAccountId) return true;
-                          
-                          // If no from account selected yet, show all
-                          if (!fromCategory) return true;
-                          
-                          // Same category - always allowed
-                          if (acc.categoryId === fromCategory.id) return true;
-                          
-                          // From a linked category - only same category accounts are allowed
-                          // (cross-category uses mpesa payment channels, not bagayi_inter_switch)
-                          if (fromCategory.isLinked) {
-                            return acc.categoryId === fromCategory.id;
-                          }
-                          
-                          // Cross-category from unlinked: only default accounts of root categories
-                          return defaultAccountIds.has(acc.id);
-                        })
-                        .map((acc) => {
-                          const isExternal = externalAccountId && acc.id === externalAccountId;
-                          const balance = accountBalances[acc.id];
-                          const isDefaultAccount = defaultAccountIds.has(acc.id);
-                          const category = categories.find((cat) => cat.defaultAccountId === acc.id);
-                          
-                          return (
-                            <option key={acc.id} value={acc.id}>
-                              {isExternal 
-                                ? acc.name 
-                                : isDefaultAccount && category
-                                  ? `${category.name} (Default)${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
-                                  : `${acc.name} (${acc.categoryName})${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
-                              }
-                            </option>
-                          );
-                        });
-                    })()}
+                    {/* Only show accounts from the same category as the from account */}
+                    {accounts
+                      .filter((acc) => {
+                        // Never show the from account
+                        if (acc.id === fromAccountId) return false;
+                        
+                        // Always allow external account
+                        if (externalAccountId && acc.id === externalAccountId) return true;
+                        
+                        // If no from account selected yet, show all from current category
+                        if (!fromCategory) {
+                          return acc.categoryId === selectedCategoryId;
+                        }
+                        
+                        // Only same category accounts are allowed
+                        return acc.categoryId === fromCategory.id;
+                      })
+                      .map((acc) => {
+                        const isExternal = externalAccountId && acc.id === externalAccountId;
+                        const balance = accountBalances[acc.id];
+                        
+                        return (
+                          <option key={acc.id} value={acc.id}>
+                            {isExternal 
+                              ? acc.name 
+                              : `${acc.name}${acc.type ? ` (${acc.type})` : ""}${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
+                            }
+                          </option>
+                        );
+                      })}
                   </select>
-                  {/* Show hint when cross-category transfer is detected */}
-                  {requiresPaymentChannel && toAccountId && (
-                    <div style={{ 
-                      marginTop: "6px", 
-                      padding: "8px 12px", 
-                      backgroundColor: requiresExternalTransactionId ? "#fef3c7" : "#dbeafe", 
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      color: requiresExternalTransactionId ? "#92400e" : "#1e40af"
-                    }}>
-                      {requiresExternalTransactionId 
-                        ? "⚠️ This transfer is to an M-Pesa linked category. External Transaction ID is required for reconciliation."
-                        : "ℹ️ This cross-category transfer will be routed via Bagayi InterSwitch"}
+                  {/* Optional: bagayi_inter_switch channel for cross-category transfers */}
+                  {fromCategory && !fromCategory.isLinked && toAccountId && (
+                    <div style={{ marginTop: "12px" }}>
+                      <label style={{ display: "flex", alignItems: "center", fontSize: "14px", cursor: "pointer", marginBottom: "8px" }}>
+                        <input
+                          type="checkbox"
+                          checked={useInterSwitchChannel}
+                          onChange={(e) => {
+                            setUseInterSwitchChannel(e.target.checked);
+                            if (!e.target.checked) {
+                              setChannelDestinationCategoryId("");
+                              setChannelToAccountId("");
+                              setChannelFromAccountId("");
+                              setExternalTransactionId("");
+                            }
+                          }}
+                          disabled={isBusy}
+                          style={{ marginRight: "8px" }}
+                        />
+                        Use Payment Channel (Bagayi InterSwitch)
+                      </label>
+                      <div style={{ fontSize: "12px", color: "var(--text-secondary, #666)", marginBottom: "8px" }}>
+                        Optional: Route this transfer through a payment channel to another category
+                      </div>
+                      
+                      {useInterSwitchChannel && (
+                        <div style={{ 
+                          padding: "12px", 
+                          backgroundColor: "var(--bg-secondary, #f9fafb)", 
+                          borderRadius: "8px",
+                          border: "1px solid var(--border)"
+                        }}>
+                          <div style={{ marginBottom: "12px" }}>
+                            <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", fontWeight: 500 }}>
+                              Destination Category *
+                            </label>
+                            <select
+                              className="setup-input"
+                              value={channelDestinationCategoryId}
+                              onChange={(e) => {
+                                setChannelDestinationCategoryId(e.target.value);
+                                // Reset account selections when category changes
+                                setChannelToAccountId("");
+                                setChannelFromAccountId("");
+                              }}
+                              disabled={isBusy}
+                              style={{ width: "100%", marginBottom: "8px" }}
+                            >
+                              <option value="">Select destination category</option>
+                              {categories
+                                .filter(cat => cat.id !== fromCategory?.id)
+                                .map((cat) => (
+                                  <option key={cat.id} value={cat.id}>
+                                    {cat.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                          
+                          <div style={{ marginBottom: "12px" }}>
+                            <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", fontWeight: 500 }}>
+                              Destination To Account (Asset) * 
+                            </label>
+                            <select
+                              className="setup-input"
+                              value={channelToAccountId}
+                              onChange={(e) => setChannelToAccountId(e.target.value)}
+                              disabled={isBusy}
+                              style={{ width: "100%", borderColor: !channelToAccountId ? "#f59e0b" : undefined }}
+                            >
+                              <option value="">Select asset account</option>
+                              {accounts
+                                .filter(acc => acc.type === "asset" && acc.categoryId === channelDestinationCategoryId)
+                                .map((acc) => (
+                                  <option key={acc.id} value={acc.id}>
+                                    {acc.name} ({acc.categoryName})
+                                  </option>
+                                ))}
+                            </select>
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)", marginTop: "2px" }}>
+                              Asset account in destination category to receive funds
+                            </div>
+                          </div>
+                          
+                          <div style={{ marginBottom: "12px" }}>
+                            <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", fontWeight: 500 }}>
+                              Destination From Account (Equity/Liability) *
+                            </label>
+                            <select
+                              className="setup-input"
+                              value={channelFromAccountId}
+                              onChange={(e) => setChannelFromAccountId(e.target.value)}
+                              disabled={isBusy}
+                              style={{ width: "100%", borderColor: !channelFromAccountId ? "#f59e0b" : undefined }}
+                            >
+                              <option value="">Select equity/liability account</option>
+                              {accounts
+                                .filter(acc => (acc.type === "equity" || acc.type === "liability") && acc.categoryId === channelDestinationCategoryId)
+                                .map((acc) => (
+                                  <option key={acc.id} value={acc.id}>
+                                    {acc.name} ({acc.categoryName} - {acc.type})
+                                  </option>
+                                ))}
+                            </select>
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)", marginTop: "2px" }}>
+                              Equity or liability account representing owner capital in destination
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", fontWeight: 500 }}>
+                              External Transaction ID *
+                            </label>
+                            <input
+                              className="setup-input"
+                              type="text"
+                              value={externalTransactionId}
+                              onChange={(e) => setExternalTransactionId(e.target.value)}
+                              placeholder="e.g., receipt number, reference"
+                              disabled={isBusy}
+                              style={{ width: "100%", borderColor: !externalTransactionId.trim() ? "#f59e0b" : undefined }}
+                            />
+                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)", marginTop: "2px" }}>
+                              Required for tracking and reconciliation
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   
-                  {/* External Transaction ID for cross-category transfers to linked categories */}
-                  {requiresExternalTransactionId && (
-                    <div style={{ marginTop: "12px" }}>
-                      <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-                        External Transaction ID *
-                      </label>
-                      <input
-                        className="setup-input"
-                        type="text"
-                        value={externalTransactionId}
-                        onChange={(e) => setExternalTransactionId(e.target.value)}
-                        placeholder="e.g., M-Pesa receipt number, bank reference"
-                        disabled={isBusy}
-                        style={{ 
-                          width: "100%",
-                          maxWidth: "100%",
-                          boxSizing: "border-box",
-                          borderColor: !externalTransactionId.trim() ? "#f59e0b" : undefined
-                        }}
-                      />
-                      <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                        Required for reconciliation with the linked payment integration
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Paybill Selection - Only show when target category has b2c_paybill */}
-                  {requiresExternalTransactionId && toCategory?.hasB2cPaybill && (
-                    <div style={{ marginTop: "12px" }}>
-                      <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-                        Payment Integration
-                      </label>
-                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                        <label style={{ 
-                          display: "flex", 
-                          alignItems: "center", 
-                          padding: "10px 14px",
-                          border: `2px solid ${selectedPaybillType === "main" ? "#22c55e" : "var(--border)"}`,
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          backgroundColor: selectedPaybillType === "main" ? "#f0fdf4" : "transparent",
-                          flex: 1,
-                          minWidth: "140px",
-                        }}>
-                          <input
-                            type="radio"
-                            name="paybillType"
-                            value="main"
-                            checked={selectedPaybillType === "main"}
-                            onChange={() => setSelectedPaybillType("main")}
-                            disabled={isBusy}
-                            style={{ marginRight: "8px" }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 500, fontSize: "13px" }}>
-                              {toCategory.paybillName || "Main Paybill"}
-                            </div>
-                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)" }}>
-                              Primary integration
-                            </div>
-                          </div>
-                        </label>
-                        <label style={{ 
-                          display: "flex", 
-                          alignItems: "center", 
-                          padding: "10px 14px",
-                          border: `2px solid ${selectedPaybillType === "b2c" ? "#22c55e" : "var(--border)"}`,
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          backgroundColor: selectedPaybillType === "b2c" ? "#f0fdf4" : "transparent",
-                          flex: 1,
-                          minWidth: "140px",
-                        }}>
-                          <input
-                            type="radio"
-                            name="paybillType"
-                            value="b2c"
-                            checked={selectedPaybillType === "b2c"}
-                            onChange={() => setSelectedPaybillType("b2c")}
-                            disabled={isBusy}
-                            style={{ marginRight: "8px" }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 500, fontSize: "13px" }}>
-                              {toCategory.b2cPaybillName || "B2C Paybill"}
-                            </div>
-                            <div style={{ fontSize: "11px", color: "var(--text-secondary, #666)" }}>
-                              B2C integration
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                      <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                        Select which payment integration to use for this transfer
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : modalMode === "buygoods" ? (
                 <div style={{ marginBottom: "16px" }}>
@@ -2371,7 +2433,7 @@ export default function TransactionsClient({
                     !amount ||
                     (modalMode === "manual" && !toAccountId) ||
                     (modalMode === "manual" && involvesExternalAccount && (!externalTransactionId.trim() || !extMetaId.trim() || !extMetaName.trim() || !extMetaType.trim())) ||
-                    (modalMode === "manual" && requiresExternalTransactionId && !externalTransactionId.trim()) ||
+                    (modalMode === "manual" && useInterSwitchChannel && (!channelToAccountId || !channelFromAccountId || !externalTransactionId.trim())) ||
                     (modalMode === "buygoods" && !buyGoodsNumber.trim()) ||
                     (modalMode === "paybill" && (!paybillNumber.trim() || !accountReference.trim())) ||
                     (modalMode === "sendmoney" && (phoneNumber.length !== 12 || !phoneNumber.startsWith("254") || !/^[17]\d{8}$/.test(phoneNumber.substring(3))))
