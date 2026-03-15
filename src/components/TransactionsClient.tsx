@@ -1582,7 +1582,14 @@ export default function TransactionsClient({
                 >
                   <option value="">Select account</option>
                   {categoryAccounts
-                    .filter((acc) => modalMode === "manual" ? acc.id !== toAccountId : true)
+                    .filter((acc) => {
+                      // For M-Pesa modes (sendmoney, buygoods, paybill), only show asset accounts
+                      if (modalMode !== "manual") {
+                        return acc.type === "asset";
+                      }
+                      // For manual mode, exclude the to account
+                      return acc.id !== toAccountId;
+                    })
                     .map((acc) => {
                       const balance = accountBalances[acc.id];
                       return (
