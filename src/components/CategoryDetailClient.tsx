@@ -35,9 +35,11 @@ type MpesaIntegration = {
   hasSecurityCredential?: boolean;
   utilityAccount: string;
   workingAccount: string;
-  unlinkedAccount: string;
+  unlinkedTransferInAccount: string;
+  unlinkedTransferOutAccount: string;
   liabilityAccount: string;
   b2cPaybill?: string;
+  status?: string;
 };
 
 export default function CategoryDetailClient({ category: initialCategory }: { category: Category }) {
@@ -147,7 +149,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
   const [shouldCreateAccounts, setShouldCreateAccounts] = useState(true);
   const [utilityAccountId, setUtilityAccountId] = useState("");
   const [workingAccountId, setWorkingAccountId] = useState("");
-  const [unlinkedAccountId, setUnlinkedAccountId] = useState("");
+  const [unlinkedTransferInAccountId, setUnlinkedTransferInAccountId] = useState("");
+  const [unlinkedTransferOutAccountId, setUnlinkedTransferOutAccountId] = useState("");
   const [liabilityAccountId, setLiabilityAccountId] = useState("");
   
   // M-Pesa link states
@@ -362,7 +365,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         setShouldCreateAccounts(false); // When editing, don't create new accounts
         setUtilityAccountId(editingIntegration.utilityAccount || "");
         setWorkingAccountId(editingIntegration.workingAccount || "");
-        setUnlinkedAccountId(editingIntegration.unlinkedAccount || "");
+        setUnlinkedTransferInAccountId(editingIntegration.unlinkedTransferInAccount || "");
+        setUnlinkedTransferOutAccountId(editingIntegration.unlinkedTransferOutAccount || "");
         setLiabilityAccountId(editingIntegration.liabilityAccount || "");
       } else {
         setBusinessShortCode("");
@@ -375,7 +379,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         setShouldCreateAccounts(true);
         setUtilityAccountId("");
         setWorkingAccountId("");
-        setUnlinkedAccountId("");
+        setUnlinkedTransferInAccountId("");
+        setUnlinkedTransferOutAccountId("");
         setLiabilityAccountId("");
       }
     }
@@ -993,6 +998,40 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                   <div className="txn-meta">Business Short Code: {integration.businessShortCode}</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  {integration.status && (
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "12px",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        backgroundColor: integration.status === "active"
+                          ? "var(--bg-success, #e8f5e9)"
+                          : integration.status === "initializing"
+                          ? "var(--bg-warning, #fff3e0)"
+                          : integration.status === "initialization_failed"
+                          ? "var(--bg-error, #ffebee)"
+                          : "var(--bg-secondary, #f5f5f5)",
+                        color: integration.status === "active"
+                          ? "var(--text-success, #2e7d32)"
+                          : integration.status === "initializing"
+                          ? "var(--text-warning, #e65100)"
+                          : integration.status === "initialization_failed"
+                          ? "var(--text-error, #c62828)"
+                          : "var(--text-secondary, #666)",
+                      }}
+                    >
+                      {integration.status === "active"
+                        ? "Active"
+                        : integration.status === "initializing"
+                        ? "Initializing..."
+                        : integration.status === "initialization_failed"
+                        ? "Failed"
+                        : integration.status === "inactive"
+                        ? "Inactive"
+                        : integration.status}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="button button-ghost"
@@ -1517,7 +1556,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                       </span>
                     </label>
                     <div style={{ marginTop: "4px", marginLeft: "24px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>
-                      Creates four accounts: Utility, Working, Unlinked, and Liability
+                      Creates five accounts: Utility, Working, Unlinked Transfer In, Unlinked Transfer Out, and Liability
                     </div>
                   </div>
                 </div>
@@ -1526,7 +1565,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
               {(!shouldCreateAccounts || editingIntegration) && (
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ marginBottom: "12px", padding: "12px", backgroundColor: "var(--bg-info, #e3f2fd)", borderRadius: "8px", fontSize: "13px" }}>
-                    Select existing accounts for M-Pesa integration. All three accounts are required.
+                    Select existing accounts for M-Pesa integration. All five accounts are required.
                   </div>
 
                   <div style={{ marginBottom: "12px" }}>
@@ -1571,17 +1610,37 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
 
                   <div style={{ marginBottom: "12px" }}>
                     <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
-                      Unlinked Account
+                      Unlinked Transfer In Account
                     </label>
                     <select
                       className="setup-input"
-                      value={unlinkedAccountId}
-                      onChange={(e) => setUnlinkedAccountId(e.target.value)}
+                      value={unlinkedTransferInAccountId}
+                      onChange={(e) => setUnlinkedTransferInAccountId(e.target.value)}
                       disabled={isBusy}
                       style={{ width: "100%" }}
                     >
                       <option value="">Select an account</option>
-                      {category.accounts.map((acc) => (
+                      {category.accounts.filter((acc) => acc.type === "liability").map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                      Unlinked Transfer Out Account
+                    </label>
+                    <select
+                      className="setup-input"
+                      value={unlinkedTransferOutAccountId}
+                      onChange={(e) => setUnlinkedTransferOutAccountId(e.target.value)}
+                      disabled={isBusy}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Select an account</option>
+                      {category.accounts.filter((acc) => acc.type === "liability").map((acc) => (
                         <option key={acc.id} value={acc.id}>
                           {acc.name}
                         </option>
@@ -1651,8 +1710,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                       return;
                     }
 
-                    if (!shouldCreateAccounts && (!utilityAccountId || !workingAccountId || !unlinkedAccountId || !liabilityAccountId)) {
-                      setError("Please select all four accounts");
+                    if (!shouldCreateAccounts && (!utilityAccountId || !workingAccountId || !unlinkedTransferInAccountId || !unlinkedTransferOutAccountId || !liabilityAccountId)) {
+                      setError("Please select all five accounts");
                       return;
                     }
 
@@ -1673,7 +1732,8 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                         ...(shouldCreateAccounts ? {} : {
                           utilityAccountId,
                           workingAccountId,
-                          unlinkedAccountId,
+                          unlinkedTransferInAccountId,
+                          unlinkedTransferOutAccountId,
                           liabilityAccountId,
                         }),
                       };

@@ -16,9 +16,11 @@ type MpesaIntegrationRecord = {
   category_id?: unknown;
   utility_account?: unknown;
   working_account?: unknown;
-  unlinked_account?: unknown;
+  unlinked_transfer_in_account?: unknown;
+  unlinked_transfer_out_account?: unknown;
   liability_account?: unknown;
   b2c_paybill?: unknown;
+  status?: unknown;
 };
 
 export async function GET(request: NextRequest) {
@@ -80,9 +82,11 @@ export async function GET(request: NextRequest) {
       categoryId: thingIdToString(integration.category_id),
       utilityAccount: thingIdToString(integration.utility_account),
       workingAccount: thingIdToString(integration.working_account),
-      unlinkedAccount: thingIdToString(integration.unlinked_account),
+      unlinkedTransferInAccount: thingIdToString(integration.unlinked_transfer_in_account),
+      unlinkedTransferOutAccount: thingIdToString(integration.unlinked_transfer_out_account),
       liabilityAccount: thingIdToString(integration.liability_account),
       b2cPaybill: thingIdToString(integration.b2c_paybill),
+      status: typeof integration.status === "string" ? integration.status : undefined,
     }));
 
     return NextResponse.json({ integrations: formatted });
@@ -114,7 +118,8 @@ export async function POST(request: NextRequest) {
       b2cPaybillId,
       utilityAccountId,
       workingAccountId,
-      unlinkedAccountId,
+      unlinkedTransferInAccountId,
+      unlinkedTransferOutAccountId,
       liabilityAccountId,
       createAccounts,
     } = body;
@@ -140,10 +145,11 @@ export async function POST(request: NextRequest) {
 
     let utilityAccountLiteral: string;
     let workingAccountLiteral: string;
-    let unlinkedAccountLiteral: string;
+    let unlinkedTransferInAccountLiteral: string;
+    let unlinkedTransferOutAccountLiteral: string;
     let liabilityAccountLiteral: string;
 
-    // If createAccounts is true, create the four required accounts (including liability)
+    // If createAccounts is true, create the five required accounts (including liability)
     if (createAccounts) {
       const createAccountsQuery = `
         CREATE account CONTENT {
@@ -157,7 +163,12 @@ export async function POST(request: NextRequest) {
           type: "asset"
         };
         CREATE account CONTENT {
-          name: "M-Pesa Unlinked ${businessShortCode}",
+          name: "M-Pesa Unlinked Transfer In ${businessShortCode}",
+          category_id: ${categoryLiteral},
+          type: "liability"
+        };
+        CREATE account CONTENT {
+          name: "M-Pesa Unlinked Transfer Out ${businessShortCode}",
           category_id: ${categoryLiteral},
           type: "liability"
         };
@@ -181,13 +192,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Extract the four account records from the four CREATE statements
+      // Extract the five account records from the five CREATE statements
       const utilityAccount = getResultArray<{ id: unknown }>(accountsResult.data[0])[0];
       const workingAccount = getResultArray<{ id: unknown }>(accountsResult.data[1])[0];
-      const unlinkedAccount = getResultArray<{ id: unknown }>(accountsResult.data[2])[0];
-      const liabilityAccount = getResultArray<{ id: unknown }>(accountsResult.data[3])[0];
+      const unlinkedTransferInAccount = getResultArray<{ id: unknown }>(accountsResult.data[2])[0];
+      const unlinkedTransferOutAccount = getResultArray<{ id: unknown }>(accountsResult.data[3])[0];
+      const liabilityAccount = getResultArray<{ id: unknown }>(accountsResult.data[4])[0];
 
-      if (!utilityAccount?.id || !workingAccount?.id || !unlinkedAccount?.id || !liabilityAccount?.id) {
+      if (!utilityAccount?.id || !workingAccount?.id || !unlinkedTransferInAccount?.id || !unlinkedTransferOutAccount?.id || !liabilityAccount?.id) {
         return NextResponse.json(
           { error: "Failed to retrieve created account IDs" },
           { status: 500 }
@@ -196,10 +208,11 @@ export async function POST(request: NextRequest) {
 
       const utilityId = thingIdToString(utilityAccount.id);
       const workingId = thingIdToString(workingAccount.id);
-      const unlinkedId = thingIdToString(unlinkedAccount.id);
+      const unlinkedTransferInId = thingIdToString(unlinkedTransferInAccount.id);
+      const unlinkedTransferOutId = thingIdToString(unlinkedTransferOutAccount.id);
       const liabilityId = thingIdToString(liabilityAccount.id);
 
-      if (!utilityId || !workingId || !unlinkedId || !liabilityId) {
+      if (!utilityId || !workingId || !unlinkedTransferInId || !unlinkedTransferOutId || !liabilityId) {
         return NextResponse.json(
           { error: "Failed to parse created account IDs" },
           { status: 500 }
@@ -208,23 +221,25 @@ export async function POST(request: NextRequest) {
 
       utilityAccountLiteral = toSurrealThingLiteral(utilityId) || "";
       workingAccountLiteral = toSurrealThingLiteral(workingId) || "";
-      unlinkedAccountLiteral = toSurrealThingLiteral(unlinkedId) || "";
+      unlinkedTransferInAccountLiteral = toSurrealThingLiteral(unlinkedTransferInId) || "";
+      unlinkedTransferOutAccountLiteral = toSurrealThingLiteral(unlinkedTransferOutId) || "";
       liabilityAccountLiteral = toSurrealThingLiteral(liabilityId) || "";
     } else {
       // Use provided account IDs
-      if (!utilityAccountId || !workingAccountId || !unlinkedAccountId || !liabilityAccountId) {
+      if (!utilityAccountId || !workingAccountId || !unlinkedTransferInAccountId || !unlinkedTransferOutAccountId || !liabilityAccountId) {
         return NextResponse.json(
-          { error: "Missing account IDs. Provide utilityAccountId, workingAccountId, unlinkedAccountId, and liabilityAccountId" },
+          { error: "Missing account IDs. Provide utilityAccountId, workingAccountId, unlinkedTransferInAccountId, unlinkedTransferOutAccountId, and liabilityAccountId" },
           { status: 400 }
         );
       }
 
       utilityAccountLiteral = toSurrealThingLiteral(utilityAccountId) || "";
       workingAccountLiteral = toSurrealThingLiteral(workingAccountId) || "";
-      unlinkedAccountLiteral = toSurrealThingLiteral(unlinkedAccountId) || "";
+      unlinkedTransferInAccountLiteral = toSurrealThingLiteral(unlinkedTransferInAccountId) || "";
+      unlinkedTransferOutAccountLiteral = toSurrealThingLiteral(unlinkedTransferOutAccountId) || "";
       liabilityAccountLiteral = toSurrealThingLiteral(liabilityAccountId) || "";
 
-      if (!utilityAccountLiteral || !workingAccountLiteral || !unlinkedAccountLiteral || !liabilityAccountLiteral) {
+      if (!utilityAccountLiteral || !workingAccountLiteral || !unlinkedTransferInAccountLiteral || !unlinkedTransferOutAccountLiteral || !liabilityAccountLiteral) {
         return NextResponse.json({ error: "Invalid account IDs" }, { status: 400 });
       }
     }
@@ -296,7 +311,8 @@ export async function POST(request: NextRequest) {
       setFields.push(`b2c_paybill = ${b2cPaybillLiteral || "NONE"}`);
       setFields.push(`utility_account = ${utilityAccountLiteral}`);
       setFields.push(`working_account = ${workingAccountLiteral}`);
-      setFields.push(`unlinked_account = ${unlinkedAccountLiteral}`);
+      setFields.push(`unlinked_transfer_in_account = ${unlinkedTransferInAccountLiteral}`);
+      setFields.push(`unlinked_transfer_out_account = ${unlinkedTransferOutAccountLiteral}`);
       setFields.push(`liability_account = ${liabilityAccountLiteral}`);
       
       query = `
@@ -318,7 +334,8 @@ export async function POST(request: NextRequest) {
           category_id: ${categoryLiteral},
           utility_account: ${utilityAccountLiteral},
           working_account: ${workingAccountLiteral},
-          unlinked_account: ${unlinkedAccountLiteral},
+          unlinked_transfer_in_account: ${unlinkedTransferInAccountLiteral},
+          unlinked_transfer_out_account: ${unlinkedTransferOutAccountLiteral},
           liability_account: ${liabilityAccountLiteral}
         };
       `;

@@ -12,6 +12,17 @@ type AccountRecord = {
   name?: unknown;
 };
 
+type IntegrationRecord = {
+  id: unknown;
+  category_id: unknown;
+  utility_account: unknown;
+  working_account: unknown;
+  unlinked_transfer_in_account: unknown;
+  unlinked_transfer_out_account: unknown;
+  liability_account: unknown;
+  b2c_paybill: unknown;
+};
+
 // POST: Check for conflicts and migrate M-Pesa integration to another category
 export async function POST(request: NextRequest) {
   try {
@@ -51,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Get the integration with its linked accounts and b2c_paybill
     const getIntegrationQuery = `
-      SELECT id, category_id, utility_account, working_account, unlinked_account, liability_account, b2c_paybill
+      SELECT id, category_id, utility_account, working_account, unlinked_transfer_in_account, unlinked_transfer_out_account, liability_account, b2c_paybill
       FROM mpesa_paybill_integration
       WHERE id = ${integrationLiteral};
     `;
@@ -68,16 +79,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-
-    type IntegrationRecord = {
-      id: unknown;
-      category_id: unknown;
-      utility_account: unknown;
-      working_account: unknown;
-      unlinked_account: unknown;
-      liability_account: unknown;
-      b2c_paybill: unknown;
-    };
 
     const integrations = getResultArray<IntegrationRecord>(integrationResult.data[0]);
     if (integrations.length === 0) {
@@ -98,7 +99,8 @@ export async function POST(request: NextRequest) {
     const mainAccountIds = [
       thingIdToString(integration.utility_account),
       thingIdToString(integration.working_account),
-      thingIdToString(integration.unlinked_account),
+      thingIdToString(integration.unlinked_transfer_in_account),
+      thingIdToString(integration.unlinked_transfer_out_account),
       thingIdToString(integration.liability_account),
     ].filter(Boolean) as string[];
 
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
       // Get the B2C integration and its accounts
       const b2cLiteral = toSurrealThingLiteral(b2cPaybillId);
       const getB2cQuery = `
-        SELECT id, category_id, utility_account, working_account, unlinked_account, liability_account
+        SELECT id, category_id, utility_account, working_account, unlinked_transfer_in_account, unlinked_transfer_out_account, liability_account
         FROM mpesa_paybill_integration
         WHERE id = ${b2cLiteral};
       `;
@@ -129,7 +131,8 @@ export async function POST(request: NextRequest) {
           b2cAccountIds = [
             thingIdToString(b2cIntegration.utility_account),
             thingIdToString(b2cIntegration.working_account),
-            thingIdToString(b2cIntegration.unlinked_account),
+            thingIdToString(b2cIntegration.unlinked_transfer_in_account),
+            thingIdToString(b2cIntegration.unlinked_transfer_out_account),
             thingIdToString(b2cIntegration.liability_account),
           ].filter(Boolean) as string[];
         }
@@ -244,19 +247,6 @@ export async function POST(request: NextRequest) {
     if (b2cPaybillId) {
       const b2cLiteral = toSurrealThingLiteral(b2cPaybillId);
       updateQueries.push(`fn::move_gateway_category(${b2cLiteral}, ${targetCategoryLiteral});`);
-    }
-
-    const migrateResult = await executeSurrealQL({
-      token,
-      query: updateQueries.join("\n"),
-    `);
-
-    // 3. If there's a B2C integration, update its category_id too
-    if (b2cPaybillId) {
-      const b2cLiteral = toSurrealThingLiteral(b2cPaybillId);
-      updateQueries.push(`
-        UPDATE ${b2cLiteral} SET category_id = ${targetCategoryLiteral};
-      `);
     }
 
     const migrateResult = await executeSurrealQL({
