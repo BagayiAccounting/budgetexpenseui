@@ -292,7 +292,7 @@ export default function TransactionsClient({
   // 3. The from category is NOT linked to a payment integration (if linked, use mpesa channels)
   // 
   // When transferring between accounts in different category hierarchies,
-  // we must use payment_channel with bagayi_inter_switch instead of to_account_id
+  // we must use payment_channel with bagayi_inter_switch instead of to_account
   const requiresPaymentChannel = (() => {
     if (!fromAccount || !toAccount) return false;
     if (fromAccount.categoryId === toAccount.categoryId) return false;
@@ -420,7 +420,7 @@ export default function TransactionsClient({
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     setTransactionDate(`${year}-${month}-${day}`);
-    setTransactionTime(now.toTimeString().slice(0, 5)); // Current time in HH:MM format
+    setTransactionTime(now.toTimeString().slice(0, 8)); // Current time in HH:MM:SS format
     setCustomMetadata([]);
     setExtMetaId("");
     setExtMetaName("");
@@ -491,9 +491,11 @@ export default function TransactionsClient({
       // Combine date and time into ISO string
       let createdAt: string | undefined;
       if (transactionDate) {
-        const timeToUse = transactionTime || "00:00";
+        const timeToUse = transactionTime || "00:00:00";
+        // Ensure time has seconds (add :00 if only HH:MM provided)
+        const timeWithSeconds = timeToUse.length === 5 ? `${timeToUse}:00` : timeToUse;
         // Parse date and time in local timezone, then convert to ISO
-        const localDateTime = new Date(`${transactionDate}T${timeToUse}:00`);
+        const localDateTime = new Date(`${transactionDate}T${timeWithSeconds}`);
         createdAt = localDateTime.toISOString();
       }
 
@@ -2183,10 +2185,11 @@ export default function TransactionsClient({
                     <input
                       className="setup-input"
                       type="time"
+                      step="1"
                       value={transactionTime}
                       onChange={(e) => setTransactionTime(e.target.value)}
                       disabled={isBusy}
-                      style={{ width: "120px", boxSizing: "border-box" }}
+                      style={{ width: "140px", boxSizing: "border-box" }}
                     />
                   </div>
                   <div style={{ marginTop: "4px", fontSize: "12px", color: "var(--text-secondary, #666)" }}>

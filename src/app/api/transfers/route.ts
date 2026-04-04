@@ -82,11 +82,11 @@ export async function POST(req: NextRequest) {
     const transferStatus = status || "draft";
     
     // Build the content object
-    let contentFields = `from_account_id: ${fromLiteral}`;
+    let contentFields = `from_account: ${fromLiteral}`;
     
-    // Add to_account_id only if provided (not for payment channel transactions)
+    // Add to_account only if provided (not for payment channel transactions)
     if (toLiteral) {
-      contentFields += `,\n  to_account_id: ${toLiteral}`;
+      contentFields += `,\n  to_account: ${toLiteral}`;
     }
     
     contentFields += `,\n  amount: ${amount}`;

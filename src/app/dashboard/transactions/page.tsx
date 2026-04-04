@@ -127,20 +127,20 @@ export default async function TransactionsPage({
     if (selectedCategoryId) {
       const transfersQuery = `
         SELECT *,
-          from_account_id.name AS from_account_name,
-          to_account_id.name AS to_account_name,
-          from_account_id.category_id.name AS from_category_name,
-          to_account_id.category_id.name AS to_category_name,
-          from_account_id.category_id.default_account_id AS from_category_default_account,
-          to_account_id.category_id.default_account_id AS to_category_default_account,
-          from_account_id AS from_account_ref,
-          to_account_id AS to_account_ref,
+          from_account.name AS from_account_name,
+          to_account.name AS to_account_name,
+          from_account.category_id.name AS from_category_name,
+          to_account.category_id.name AS to_category_name,
+          from_account.category_id.default_account_id AS from_category_default_account,
+          to_account.category_id.default_account_id AS to_category_default_account,
+          from_account AS from_account_ref,
+          to_account AS to_account_ref,
           created_by.name AS created_by_name,
           metadata,
           payment_channel
         FROM transfer
-        WHERE from_account_id.category_id = ${selectedCategoryId}
-           OR to_account_id.category_id = ${selectedCategoryId}
+        WHERE from_account.category_id = ${selectedCategoryId}
+           OR to_account.category_id = ${selectedCategoryId}
         ORDER BY created_at DESC
         LIMIT 100;
       `;

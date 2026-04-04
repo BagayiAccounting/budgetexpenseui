@@ -192,7 +192,7 @@ export async function GET(req: NextRequest) {
             payment_channel,
             label,
             description,
-            from_account_id,
+            from_account,
             created_at
           FROM transfer
           WHERE 
@@ -209,7 +209,7 @@ export async function GET(req: NextRequest) {
             payment_channel,
             label,
             description,
-            from_account_id,
+            from_account,
             created_at
           FROM transfer
           WHERE 
@@ -237,13 +237,13 @@ export async function GET(req: NextRequest) {
               payment_channel?: Record<string, unknown>;
               label?: string;
               description?: string;
-              from_account_id?: string;
+              from_account?: string;
               created_at?: string;
             }
           | undefined;
 
         if (latestData) {
-          fromAccountId = String(latestData.from_account_id || "");
+          fromAccountId = String(latestData.from_account || "");
           lastUsed = String(latestData.created_at || "");
 
           // Try to extract name from M-Pesa callback
@@ -291,7 +291,7 @@ export async function GET(req: NextRequest) {
         payment_channel,
         label,
         description,
-        from_account_id,
+        from_account,
         created_at
       FROM transfer
       WHERE 
@@ -314,7 +314,7 @@ export async function GET(req: NextRequest) {
         payment_channel?: Record<string, unknown>;
         label?: string;
         description?: string;
-        from_account_id?: string;
+        from_account?: string;
         created_at?: string;
       }>;
 
@@ -349,7 +349,7 @@ export async function GET(req: NextRequest) {
           accountReference: item.account_reference,
           name,
           count: 1, // Recent but not frequent
-          fromAccountId: String(item.from_account_id || ""),
+          fromAccountId: String(item.from_account || ""),
           lastUsed: String(item.created_at || ""),
         });
       }
