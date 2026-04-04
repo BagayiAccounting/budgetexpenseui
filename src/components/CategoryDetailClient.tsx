@@ -328,7 +328,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
     void loadCategoryUsers();
   }, [category.id]);
 
-  async function openModal(type: ModalType, categoryId: string) {
+  async function openModal(type: ModalType, categoryId: string, integrationToEdit?: MpesaIntegration | null) {
     setModalType(type);
     setModalCategoryId(categoryId);
     setAccountName("");
@@ -349,26 +349,31 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
         console.error("Failed to load available paybills:", err);
       }
       
+      // Use the passed integration if available, otherwise check state
+      const integration = integrationToEdit !== undefined ? integrationToEdit : editingIntegration;
+      
       // If editing an existing integration, pre-fill the form
-      if (editingIntegration) {
-        setBusinessShortCode(editingIntegration.businessShortCode || "");
-        setPaybillName(editingIntegration.paybillName || "");
+      if (integration) {
+        setEditingIntegration(integration);
+        setBusinessShortCode(integration.businessShortCode || "");
+        setPaybillName(integration.paybillName || "");
         // Pre-fill initiatorName (returned from API)
-        setInitiatorName(editingIntegration.initiatorName || "");
+        setInitiatorName(integration.initiatorName || "");
         // Security credential: show placeholder if exists, empty if new
-        setSecurityCredential(editingIntegration.hasSecurityCredential ? "••••••••" : "");
+        setSecurityCredential(integration.hasSecurityCredential ? "••••••••" : "");
         // Consumer credentials: show placeholder if editing (we assume they exist)
         setConsumerKey("•••••••••••••");
         setConsumerSecret("•••••••••••••");
         // B2C Paybill: pre-fill if exists
-        setB2cPaybillId(editingIntegration.b2cPaybill || "");
+        setB2cPaybillId(integration.b2cPaybill || "");
         setShouldCreateAccounts(false); // When editing, don't create new accounts
-        setUtilityAccountId(editingIntegration.utilityAccount || "");
-        setWorkingAccountId(editingIntegration.workingAccount || "");
-        setUnlinkedTransferInAccountId(editingIntegration.unlinkedTransferInAccount || "");
-        setUnlinkedTransferOutAccountId(editingIntegration.unlinkedTransferOutAccount || "");
-        setLiabilityAccountId(editingIntegration.liabilityAccount || "");
+        setUtilityAccountId(integration.utilityAccount || "");
+        setWorkingAccountId(integration.workingAccount || "");
+        setUnlinkedTransferInAccountId(integration.unlinkedTransferInAccount || "");
+        setUnlinkedTransferOutAccountId(integration.unlinkedTransferOutAccount || "");
+        setLiabilityAccountId(integration.liabilityAccount || "");
       } else {
+        setEditingIntegration(null);
         setBusinessShortCode("");
         setPaybillName("");
         setInitiatorName("");
@@ -869,8 +874,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                   type="button"
                   onClick={() => {
                     setShowHeaderMenu(false);
-                    setEditingIntegration(null); // Create new integration
-                    openModal("mpesa", category.id);
+                    openModal("mpesa", category.id, null);
                   }}
                   style={{
                     display: "block",
@@ -965,8 +969,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                 type="button"
                 className="button button-ghost"
                 onClick={() => {
-                  setEditingIntegration(null);
-                  openModal("mpesa", category.id);
+                  openModal("mpesa", category.id, null);
                 }}
                 aria-label="Add M-Pesa integration"
                 style={{ padding: "8px 12px" }}
@@ -991,8 +994,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
             {mpesaIntegrations.map((integration) => (
               <div key={integration.id} className="txn-row">
                 <div className="txn-left" style={{ cursor: "pointer" }} onClick={() => {
-                  setEditingIntegration(integration);
-                  openModal("mpesa", category.id);
+                  openModal("mpesa", category.id, integration);
                 }}>
                   <div className="txn-name">{integration.paybillName}</div>
                   <div className="txn-meta">Business Short Code: {integration.businessShortCode}</div>
@@ -1051,8 +1053,7 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                     className="button button-ghost"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setEditingIntegration(integration);
-                      openModal("mpesa", category.id);
+                      openModal("mpesa", category.id, integration);
                     }}
                     style={{ padding: "4px 8px", fontSize: "12px" }}
                   >
