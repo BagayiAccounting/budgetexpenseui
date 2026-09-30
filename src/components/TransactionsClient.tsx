@@ -1,7 +1,268 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+
+// Searchable Account Select Component
+function SearchableAccountSelect({
+  accounts,
+  value,
+  onChange,
+  placeholder = "Select account",
+  disabled = false,
+  formatBalance,
+  accountBalances,
+  loadingBalances,
+  externalAccountId,
+  isCategoryLinked,
+}: {
+  accounts: { id: string; name: string; type?: string; categoryName?: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  formatBalance?: (balance?: string) => string;
+  accountBalances?: Record<string, string>;
+  loadingBalances?: boolean;
+  externalAccountId?: string;
+  isCategoryLinked?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setSearchTerm("");
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  const selectedAccount = accounts.find((acc) => acc.id === value);
+
+  const filteredAccounts = accounts.filter((acc) => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    const nameMatch = acc.name.toLowerCase().includes(search);
+    const typeMatch = acc.type?.toLowerCase().includes(search);
+    const categoryMatch = acc.categoryName?.toLowerCase().includes(search);
+    return nameMatch || typeMatch || categoryMatch;
+  });
+
+  const handleSelect = (accountId: string) => {
+    onChange(accountId);
+    setIsOpen(false);
+    setSearchTerm("");
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
+      {/* Selected Value / Trigger Button */}
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="setup-input"
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+          textAlign: "left",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: disabled ? "not-allowed" : "pointer",
+          backgroundColor: disabled ? "var(--bg-secondary, #f5f5f5)" : "var(--bg-primary, #ffffff)",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          {selectedAccount ? (
+            <>
+              {selectedAccount.name}
+              {externalAccountId && selectedAccount.id === externalAccountId && " (External)"}
+              {selectedAccount.type && !externalAccountId && ` (${selectedAccount.type})`}
+              {formatBalance && accountBalances && accountBalances[selectedAccount.id] && (
+                <span style={{ color: "var(--text-secondary, #666)", marginLeft: "8px" }}>
+                  - Balance: {formatBalance(accountBalances[selectedAccount.id])}
+                </span>
+              )}
+              {loadingBalances && !accountBalances?.[selectedAccount.id] && (
+                <span style={{ color: "var(--text-secondary, #666)", marginLeft: "8px" }}>(loading...)</span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "var(--text-secondary, #666)" }}>{placeholder}</span>
+          )}
+        </span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ 
+            flexShrink: 0, 
+            marginLeft: "8px",
+            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s ease"
+          }}
+        >
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            marginTop: "4px",
+            backgroundColor: "var(--bg-primary, #ffffff)",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+            zIndex: 1001,
+            overflow: "hidden",
+          }}
+        >
+          {/* Search Input */}
+          <div style={{ padding: "8px", borderBottom: "1px solid var(--border)" }}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search accounts..."
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                fontSize: "14px",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setIsOpen(false);
+                  setSearchTerm("");
+                }
+              }}
+            />
+          </div>
+
+          {/* Account List */}
+          <div
+            style={{
+              maxHeight: "250px",
+              overflowY: "auto",
+            }}
+          >
+            {/* Empty option */}
+            <button
+              type="button"
+              onClick={() => handleSelect("")}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                textAlign: "left",
+                border: "none",
+                background: value === "" ? "var(--bg-secondary, #f5f5f5)" : "none",
+                cursor: "pointer",
+                fontSize: "14px",
+                color: "var(--text-secondary, #666)",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = value === "" ? "var(--bg-secondary, #f5f5f5)" : "transparent")}
+            >
+              {placeholder}
+            </button>
+
+            {filteredAccounts.length === 0 ? (
+              <div style={{ padding: "16px", textAlign: "center", color: "var(--text-secondary, #666)", fontSize: "14px" }}>
+                No accounts found
+              </div>
+            ) : (
+              filteredAccounts.map((acc) => {
+                const isExternal = externalAccountId && acc.id === externalAccountId;
+                const balance = accountBalances?.[acc.id];
+                const isSelected = acc.id === value;
+
+                return (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => handleSelect(acc.id)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      textAlign: "left",
+                      border: "none",
+                      background: isSelected ? "var(--bg-secondary, #f5f5f5)" : "none",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--bg-hover, #f5f5f5)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = isSelected ? "var(--bg-secondary, #f5f5f5)" : "transparent")}
+                  >
+                    <span style={{ fontWeight: isSelected ? 600 : 400 }}>
+                      {acc.name}
+                      {isExternal && " (External)"}
+                      {acc.type && !isExternal && (
+                        <span style={{ 
+                          marginLeft: "8px", 
+                          padding: "2px 6px", 
+                          backgroundColor: "var(--bg-secondary, #e5e7eb)",
+                          borderRadius: "4px",
+                          fontSize: "11px",
+                          color: "var(--text-secondary, #666)"
+                        }}>
+                          {acc.type}
+                        </span>
+                      )}
+                    </span>
+                    {formatBalance && balance && (
+                      <span style={{ fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                        Balance: {formatBalance(balance)}
+                      </span>
+                    )}
+                    {loadingBalances && !balance && !isExternal && (
+                      <span style={{ fontSize: "12px", color: "var(--text-secondary, #666)" }}>
+                        Loading balance...
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Account = {
   id: string;
@@ -1575,38 +1836,31 @@ export default function TransactionsClient({
                 <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
                   From Account *
                 </label>
-                <select
-                  className="setup-input"
-                  value={fromAccountId}
-                  onChange={(e) => setFromAccountId(e.target.value)}
-                  disabled={isBusy}
-                  style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
-                >
-                  <option value="">Select account</option>
-                  {categoryAccounts
-                    .filter((acc) => {
+                <SearchableAccountSelect
+                  accounts={[
+                    ...categoryAccounts.filter((acc) => {
                       // For M-Pesa modes (sendmoney, buygoods, paybill), only show asset accounts
                       if (modalMode !== "manual") {
                         return acc.type === "asset";
                       }
                       // For manual mode, exclude the to account
                       return acc.id !== toAccountId;
-                    })
-                    .map((acc) => {
-                      const balance = accountBalances[acc.id];
-                      return (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.name}{balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}
-                        </option>
-                      );
-                    })}
-                  {/* Show external account for categories that are NOT linked to a payment integration */}
-                  {!isCategoryLinked && externalAccount && modalMode === "manual" && externalAccount.id !== toAccountId && (
-                    <option key={externalAccount.id} value={externalAccount.id}>
-                      {externalAccount.name} (External)
-                    </option>
-                  )}
-                </select>
+                    }),
+                    // Show external account for categories that are NOT linked to a payment integration
+                    ...(!isCategoryLinked && externalAccount && modalMode === "manual" && externalAccount.id !== toAccountId
+                      ? [externalAccount]
+                      : []),
+                  ]}
+                  value={fromAccountId}
+                  onChange={setFromAccountId}
+                  placeholder="Select account"
+                  disabled={isBusy}
+                  formatBalance={formatBalance}
+                  accountBalances={accountBalances}
+                  loadingBalances={loadingBalances}
+                  externalAccountId={externalAccountId}
+                  isCategoryLinked={isCategoryLinked}
+                />
               </div>
 
               {modalMode === "manual" ? (
@@ -1614,51 +1868,37 @@ export default function TransactionsClient({
                   <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
                     To Account *
                   </label>
-                  <select
-                    className="setup-input"
+                  <SearchableAccountSelect
+                    accounts={accounts.filter((acc) => {
+                      // Never show the from account
+                      if (acc.id === fromAccountId) return false;
+                      
+                      // Always allow external account
+                      if (externalAccountId && acc.id === externalAccountId) return true;
+                      
+                      // If no from account selected yet, show all from current category
+                      if (!fromCategory) {
+                        return acc.categoryId === selectedCategoryId;
+                      }
+                      
+                      // Only same category accounts are allowed
+                      return acc.categoryId === fromCategory.id;
+                    })}
                     value={toAccountId}
-                    onChange={(e) => {
-                      setToAccountId(e.target.value);
+                    onChange={(value) => {
+                      setToAccountId(value);
                       // Reset interswitch channel state when changing account
                       setUseInterSwitchChannel(false);
                       setChannelToAccountId("");
                       setChannelFromAccountId("");
                     }}
+                    placeholder="Select account"
                     disabled={isBusy}
-                    style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}
-                  >
-                    <option value="">Select account</option>
-                    {/* Only show accounts from the same category as the from account */}
-                    {accounts
-                      .filter((acc) => {
-                        // Never show the from account
-                        if (acc.id === fromAccountId) return false;
-                        
-                        // Always allow external account
-                        if (externalAccountId && acc.id === externalAccountId) return true;
-                        
-                        // If no from account selected yet, show all from current category
-                        if (!fromCategory) {
-                          return acc.categoryId === selectedCategoryId;
-                        }
-                        
-                        // Only same category accounts are allowed
-                        return acc.categoryId === fromCategory.id;
-                      })
-                      .map((acc) => {
-                        const isExternal = externalAccountId && acc.id === externalAccountId;
-                        const balance = accountBalances[acc.id];
-                        
-                        return (
-                          <option key={acc.id} value={acc.id}>
-                            {isExternal 
-                              ? acc.name 
-                              : `${acc.name}${acc.type ? ` (${acc.type})` : ""}${balance ? ` - Balance: ${formatBalance(balance)}` : loadingBalances ? " (loading...)" : ""}`
-                            }
-                          </option>
-                        );
-                      })}
-                  </select>
+                    formatBalance={formatBalance}
+                    accountBalances={accountBalances}
+                    loadingBalances={loadingBalances}
+                    externalAccountId={externalAccountId}
+                  />
                   {/* Optional: bagayi_inter_switch channel for cross-category transfers */}
                   {fromCategory && !fromCategory.isLinked && toAccountId && (
                     <div style={{ marginTop: "12px" }}>

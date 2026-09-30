@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import type { TbAccount, AccountBalancesMap } from "@/lib/settingsService";
-import { rowsFromTbAccount } from "@/lib/accountUtils";
+import type { TbAccount, CategoryAssetBalances } from "@/lib/settingsService";
+import { formatNumber, rowsFromTbAccount, signClass, toFiniteNumber } from "@/lib/accountUtils";
 
 const ACCOUNT_TYPES = ["asset", "expense", "liability", "revenue", "equity"] as const;
 type AccountType = (typeof ACCOUNT_TYPES)[number];
@@ -45,8 +45,8 @@ type MpesaIntegration = {
 export default function CategoryDetailClient({ category: initialCategory }: { category: Category }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [balances, setBalances] = useState<AccountBalancesMap>({});
-  const [balancesLoading, setBalancesLoading] = useState(true);
+  const [categoryAssetBalances, setCategoryAssetBalances] = useState<CategoryAssetBalances | null>(null);
+  const [categoryAssetBalanceLoading, setCategoryAssetBalanceLoading] = useState(true);
   const [modalType, setModalType] = useState<ModalType>(null);
   const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState<string | null>(null);
@@ -58,81 +58,41 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
   const [subcategoryName, setSubcategoryName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
-  // Collect all account IDs from the category tree
-  const collectAccountIds = useCallback((cat: Category): string[] => {
-    const ids: string[] = [];
-    function traverse(c: Category) {
-      for (const account of c.accounts) {
-        ids.push(account.id);
-      }
-      for (const sub of c.subcategories) {
-        traverse(sub);
-      }
-    }
-    traverse(cat);
-    return ids;
-  }, []);
+  const category = initialCategory;
 
-  // Merge balances into category
-  const category = useMemo(() => {
-    function enrichCategory(cat: Category): Category {
-      return {
-        ...cat,
-        accounts: cat.accounts.map((account) => {
-          const tbAccount = balances[account.id] || balances[`account:${account.id.split(":")[1]}`];
-          return {
-            ...account,
-            tbAccount: tbAccount || account.tbAccount,
-          };
-        }),
-        subcategories: cat.subcategories.map(enrichCategory),
-      };
-    }
-    return enrichCategory(initialCategory);
-  }, [initialCategory, balances]);
-
-  // Fetch balances asynchronously on mount
   useEffect(() => {
-    const accountIds = collectAccountIds(initialCategory);
-    if (accountIds.length === 0) {
-      setBalancesLoading(false);
-      return;
-    }
-
     let cancelled = false;
 
-    async function fetchBalances() {
+    async function fetchCategoryAssetBalance() {
       try {
-        const res = await fetch("/api/settings/balances", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountIds }),
-        });
+        const res = await fetch(
+          `/api/settings/category-asset-balances?categoryId=${encodeURIComponent(initialCategory.id)}`,
+        );
 
         if (!res.ok) {
-          console.error("[CategoryDetailClient] Failed to fetch balances:", res.status);
+          console.error("[CategoryDetailClient] Failed to fetch category asset balances:", res.status);
           return;
         }
 
         const data = await res.json();
-        if (!cancelled && data.balances) {
-          setBalances(data.balances);
+        if (!cancelled) {
+          setCategoryAssetBalances(data.assets ?? null);
         }
       } catch (err) {
-        console.error("[CategoryDetailClient] Error fetching balances:", err);
+        console.error("[CategoryDetailClient] Error fetching category asset balances:", err);
       } finally {
         if (!cancelled) {
-          setBalancesLoading(false);
+          setCategoryAssetBalanceLoading(false);
         }
       }
     }
 
-    void fetchBalances();
+    void fetchCategoryAssetBalance();
 
     return () => {
       cancelled = true;
     };
-  }, [initialCategory, collectAccountIds]);
+  }, [initialCategory.id]);
   
   // M-Pesa integration states - now supports multiple integrations per category
   const [mpesaIntegrations, setMpesaIntegrations] = useState<MpesaIntegration[]>([]);
@@ -632,6 +592,20 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
 
     return accounts.map((a) => {
       const isDefault = cat.defaultAccountId === a.id;
+      const assetBalance = cat.id === category.id
+        ? categoryAssetBalances?.accounts.find((asset) => asset.account === a.id)
+        : undefined;
+      const balanceRows = assetBalance
+        ? [
+            { label: "Book", value: toFiniteNumber(assetBalance.bookAsset) },
+            { label: "Spendable", value: toFiniteNumber(assetBalance.spendableAsset) },
+            { label: "Projected", value: toFiniteNumber(assetBalance.projectedAsset) },
+          ].flatMap((row) => row.value == null ? [] : [{
+            label: row.label,
+            text: formatNumber(row.value),
+            className: signClass(row.value),
+          }])
+        : rowsFromTbAccount(a.tbAccount);
       return (
         <div key={a.id} className="txn-row">
           <div className="txn-left" style={{ flex: 1 }}>
@@ -640,11 +614,10 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {(() => {
-              const rows = rowsFromTbAccount(a.tbAccount);
-              if (!rows || rows.length === 0) return null;
+              if (balanceRows.length === 0) return null;
               return (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                  {rows.map((row) => (
+                  {balanceRows.map((row) => (
                     <div key={row.label} className={`txn-meta${row.className ? ` ${row.className}` : ""}`}>
                       {row.label}: {row.text}
                     </div>
@@ -812,6 +785,17 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
   }
 
   const isMainDropdownOpen = showDropdown === category.id;
+  const categoryAssetRows = categoryAssetBalances
+    ? [
+        { label: "Book", value: toFiniteNumber(categoryAssetBalances.bookAsset) },
+        { label: "Spendable", value: toFiniteNumber(categoryAssetBalances.spendableAsset) },
+        { label: "Projected", value: toFiniteNumber(categoryAssetBalances.projectedAsset) },
+      ].flatMap((row) => row.value == null ? [] : [{
+        label: row.label,
+        text: formatNumber(row.value),
+        className: signClass(row.value),
+      }])
+    : [];
 
   return (
     <div className="dashboard-page">
@@ -1205,6 +1189,37 @@ export default function CategoryDetailClient({ category: initialCategory }: { ca
                 </div>
               </div>
             ))
+          )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <div className="panel-title">Category Aggregated Assets</div>
+            <div className="panel-subtitle">
+              {categoryAssetBalances
+                ? `Combined balances across ${categoryAssetBalances.accountCount} asset account${categoryAssetBalances.accountCount === 1 ? "" : "s"}`
+                : "Combined asset balances for this category"}
+            </div>
+          </div>
+        </div>
+        <div className="txn-list">
+          {categoryAssetBalanceLoading ? (
+            <div className="txn-row">
+              <div className="txn-meta">Loading aggregated assets...</div>
+            </div>
+          ) : categoryAssetRows.length > 0 ? (
+            categoryAssetRows.map((row) => (
+              <div key={row.label} className="txn-row">
+                <div className="txn-name">{row.label}</div>
+                <div className={`txn-name${row.className ? ` ${row.className}` : ""}`}>{row.text}</div>
+              </div>
+            ))
+          ) : (
+            <div className="txn-row">
+              <div className="txn-meta">No aggregated asset balances available</div>
+            </div>
           )}
         </div>
       </div>

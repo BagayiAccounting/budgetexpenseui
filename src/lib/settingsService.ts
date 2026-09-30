@@ -315,6 +315,78 @@ export async function createSubCategory(options: {
 // Returns a map of account_id -> TbAccount
 export type AccountBalancesMap = Record<string, TbAccount>;
 
+export type CategoryAssetBalances = {
+  category: string;
+  accountCount: number;
+  accounts: Array<{
+    account: string;
+    name: string;
+    bookAsset: string;
+    spendableAsset: string;
+    projectedAsset: string;
+  }>;
+  bookAsset: string;
+  spendableAsset: string;
+  projectedAsset: string;
+};
+
+export async function fetchCategoryAssetBalances(options: {
+  accessToken: string | undefined;
+  categoryId: string;
+}): Promise<{ status: "ok"; assets?: CategoryAssetBalances } | { status: "skipped"; reason: string }> {
+  const { accessToken, categoryId } = options;
+  if (!accessToken) return { status: "skipped", reason: "missing_access_token" };
+
+  const categoryLiteral = toSurrealThingLiteral(categoryId);
+  if (!categoryLiteral) return { status: "skipped", reason: "invalid_category_id" };
+
+  const result = await executeSurrealQL({
+    token: accessToken,
+    query: `RETURN fn::category_asset_balances(${categoryLiteral});`,
+    logName: "settingsService.POST /sql (fetch category asset balances)",
+  });
+
+  if (!result.success) {
+    return { status: "skipped", reason: result.error };
+  }
+
+  const response = result.data[0]?.result;
+  const value = Array.isArray(response) ? response[0] : response;
+  if (!value || typeof value !== "object") return { status: "ok" };
+
+  const record = value as Record<string, unknown>;
+  const category = thingIdToString(record.category);
+  if (!category) return { status: "ok" };
+
+  const accounts = Array.isArray(record.accounts)
+    ? record.accounts.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const accountRecord = item as Record<string, unknown>;
+        const account = thingIdToString(accountRecord.account);
+        if (!account) return [];
+        return [{
+          account,
+          name: typeof accountRecord.name === "string" ? accountRecord.name : "(Unnamed account)",
+          bookAsset: String(accountRecord.book_asset ?? "0"),
+          spendableAsset: String(accountRecord.spendable_asset ?? "0"),
+          projectedAsset: String(accountRecord.projected_asset ?? "0"),
+        }];
+      })
+    : [];
+
+  return {
+    status: "ok",
+    assets: {
+      category,
+      accountCount: typeof record.account_count === "number" ? record.account_count : accounts.length,
+      accounts,
+      bookAsset: String(record.book_asset ?? "0"),
+      spendableAsset: String(record.spendable_asset ?? "0"),
+      projectedAsset: String(record.projected_asset ?? "0"),
+    },
+  };
+}
+
 export async function fetchAccountBalancesBatch(options: {
   accessToken: string | undefined;
   accountIds: string[];
