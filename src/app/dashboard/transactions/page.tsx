@@ -9,7 +9,13 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ categoryId?: string; accountId?: string }>;
+  searchParams: Promise<{
+    categoryId?: string;
+    accountId?: string;
+    days?: string;
+    startDate?: string;
+    endDate?: string;
+  }>;
 }) {
   const session = await auth0.getSession();
   if (!session?.user) {
@@ -26,6 +32,18 @@ export default async function TransactionsPage({
   const params = await searchParams;
   const categoryId = params.categoryId;
   const accountId = params.accountId;
+  const isDateOnly = (value: string | undefined): value is string =>
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  const presetDays = [7, 30, 90, 365].includes(Number(params.days)) ? Number(params.days) : null;
+  const customStartDate = isDateOnly(params.startDate) ? params.startDate : null;
+  const customEndDate = isDateOnly(params.endDate) ? params.endDate : null;
+  const dateRange = customStartDate && customEndDate && customStartDate <= customEndDate
+    ? { mode: "custom" as const, startDate: customStartDate, endDate: customEndDate }
+    : presetDays
+      ? { mode: "preset" as const, days: presetDays }
+      : params.days === "all"
+        ? { mode: "all" as const }
+        : { mode: "preset" as const, days: 30 };
 
   type Transfer = {
     id: string;
@@ -125,6 +143,17 @@ export default async function TransactionsPage({
     // Fetch transfers for selected category
     const selectedCategoryId = categoryId || categoriesData[0]?.id;
     if (selectedCategoryId) {
+      let dateCondition = "";
+      if (dateRange.mode === "preset") {
+        const start = new Date();
+        start.setUTCDate(start.getUTCDate() - dateRange.days);
+        dateCondition = ` AND created_at >= <datetime>${JSON.stringify(start.toISOString())}`;
+      } else if (dateRange.mode === "custom") {
+        const endExclusive = new Date(`${dateRange.endDate}T00:00:00.000Z`);
+        endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+        dateCondition = ` AND created_at >= <datetime>${JSON.stringify(`${dateRange.startDate}T00:00:00.000Z`)} AND created_at < <datetime>${JSON.stringify(endExclusive.toISOString())}`;
+      }
+
       const transfersQuery = `
         SELECT *,
           from_account.name AS from_account_name,
@@ -139,10 +168,11 @@ export default async function TransactionsPage({
           metadata,
           payment_channel
         FROM transfer
-        WHERE from_account.category_id = ${selectedCategoryId}
-           OR to_account.category_id = ${selectedCategoryId}
+          WHERE (from_account.category_id = ${selectedCategoryId}
+            OR to_account.category_id = ${selectedCategoryId})
+           ${dateCondition}
         ORDER BY created_at DESC
-        LIMIT 100;
+          LIMIT 1000;
       `;
 
       const transfersResult = await executeSurrealQL({
@@ -250,6 +280,7 @@ export default async function TransactionsPage({
       initialCategoryId={categoryId || null}
       initialAccountId={accountId || null}
       externalAccountId={externalAccountId}
+      initialDateRange={dateRange}
     />
   );
 }

@@ -315,6 +315,11 @@ type Transfer = {
   paymentChannel?: Record<string, unknown>;
 };
 
+type TransactionDateRange =
+  | { mode: "preset"; days: number }
+  | { mode: "custom"; startDate: string; endDate: string }
+  | { mode: "all" };
+
 const TRANSFER_TYPES = ["payment", "fees", "refund", "adjustment"] as const;
 type TransferType = (typeof TRANSFER_TYPES)[number];
 
@@ -405,6 +410,7 @@ export default function TransactionsClient({
   initialCategoryId,
   initialAccountId,
   externalAccountId,
+  initialDateRange,
 }: {
   accounts: Account[];
   categories: Category[];
@@ -412,6 +418,7 @@ export default function TransactionsClient({
   initialCategoryId: string | null;
   initialAccountId?: string | null;
   externalAccountId?: string;
+  initialDateRange: TransactionDateRange;
 }) {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
@@ -421,6 +428,15 @@ export default function TransactionsClient({
   const [isBusy, setIsBusy] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || (categories[0]?.id ?? ""));
   const [selectedAccountId, setSelectedAccountId] = useState<string>(initialAccountId || "");
+  const [dateRangeMode, setDateRangeMode] = useState(
+    initialDateRange.mode === "preset" ? String(initialDateRange.days) : initialDateRange.mode,
+  );
+  const [rangeStartDate, setRangeStartDate] = useState(
+    initialDateRange.mode === "custom" ? initialDateRange.startDate : "",
+  );
+  const [rangeEndDate, setRangeEndDate] = useState(
+    initialDateRange.mode === "custom" ? initialDateRange.endDate : "",
+  );
   
   // Detail modal state
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
@@ -596,14 +612,58 @@ export default function TransactionsClient({
   // Get the external account (if exists)
   const externalAccount = externalAccountId ? accounts.find((acc) => acc.id === externalAccountId) : undefined;
 
+  function buildTransactionsUrl(options?: {
+    categoryId?: string;
+    accountId?: string;
+    rangeMode?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const params = new URLSearchParams();
+    const categoryId = options?.categoryId ?? selectedCategoryId;
+    const accountId = options?.accountId ?? selectedAccountId;
+    const rangeMode = options?.rangeMode ?? dateRangeMode;
+
+    if (categoryId) params.set("categoryId", categoryId);
+    if (accountId) params.set("accountId", accountId);
+
+    if (rangeMode === "custom") {
+      const startDate = options?.startDate ?? rangeStartDate;
+      const endDate = options?.endDate ?? rangeEndDate;
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+    } else {
+      params.set("days", rangeMode);
+    }
+
+    return `/dashboard/transactions?${params.toString()}`;
+  }
+
   function handleCategoryChange(categoryId: string) {
     setSelectedCategoryId(categoryId);
     setSelectedAccountId(""); // Reset account filter when category changes
-    router.push(`/dashboard/transactions?categoryId=${categoryId}`);
+    router.push(buildTransactionsUrl({ categoryId, accountId: "" }));
   }
 
   function handleAccountChange(accountId: string) {
     setSelectedAccountId(accountId);
+    router.push(buildTransactionsUrl({ accountId }));
+  }
+
+  function handleDateRangeModeChange(mode: string) {
+    setDateRangeMode(mode);
+    if (mode !== "custom") {
+      router.push(buildTransactionsUrl({ rangeMode: mode }));
+    }
+  }
+
+  function applyCustomDateRange() {
+    if (!rangeStartDate || !rangeEndDate || rangeStartDate > rangeEndDate) return;
+    router.push(buildTransactionsUrl({
+      rangeMode: "custom",
+      startDate: rangeStartDate,
+      endDate: rangeEndDate,
+    }));
   }
 
   // Fetch account balances using batch API (can be called on demand or preloaded)
@@ -1307,6 +1367,66 @@ export default function TransactionsClient({
             ))}
           </select>
         </div>
+
+        <div style={{ flex: "1", minWidth: "180px", maxWidth: "220px" }}>
+          <label htmlFor="transaction-date-range" style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+            Date Range
+          </label>
+          <select
+            id="transaction-date-range"
+            className="setup-input"
+            value={dateRangeMode}
+            onChange={(e) => handleDateRangeModeChange(e.target.value)}
+            style={{ width: "100%" }}
+          >
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last 365 days</option>
+            <option value="all">All time</option>
+            <option value="custom">Custom dates</option>
+          </select>
+        </div>
+
+        {dateRangeMode === "custom" && (
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div>
+              <label htmlFor="transaction-start-date" style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                Start
+              </label>
+              <input
+                id="transaction-start-date"
+                className="setup-input"
+                type="date"
+                value={rangeStartDate}
+                max={rangeEndDate || undefined}
+                onChange={(e) => setRangeStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="transaction-end-date" style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                End
+              </label>
+              <input
+                id="transaction-end-date"
+                className="setup-input"
+                type="date"
+                value={rangeEndDate}
+                min={rangeStartDate || undefined}
+                onChange={(e) => setRangeEndDate(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="button button-ghost"
+              disabled={!rangeStartDate || !rangeEndDate || rangeStartDate > rangeEndDate}
+              onClick={applyCustomDateRange}
+              style={{ minHeight: "42px" }}
+            >
+              Apply
+            </button>
+          </div>
+        )}
 
         {/* Selected Account Balance */}
         {selectedAccountId && (
